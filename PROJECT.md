@@ -70,7 +70,19 @@ C:\Godot\stepbuild\publish.ps1 -Message "что нового"
 ```
 Скрипт синхронизирует `app/src`, `app/res`, манифест, `PROJECT.md`, `README.md`
 (мастер-копия — `distribution\README.md`), `build.ps1` и кладёт свежий APK
-в `dist/ШагоСад-<версия>.apk`, удаляя прежний. Потом `git add`, `git commit`, `git push`.
+в `dist/ShagoSad.apk` — **под постоянным именем**. Потом `git add`, `git commit`,
+`git push` и проверка, что ссылка отдаёт файл нужного размера.
+
+**Ссылка для пользователей** (не меняется, всегда свежий файл):
+`https://github.com/muzikamv-dot/shagosad/raw/main/dist/ShagoSad.apk`
+Отдаётся как `application/octet-stream`, браузер сразу скачивает `ShagoSad.apk`.
+
+Релизы (`release.ps1`, флаг `-WithRelease`) — необязательный второй канал.
+Причина: API GitHub при загрузке файла в релиз из скрипта стабильно отвечает
+«Multipart form data required», хотя тот же запрос вручную проходит. Поэтому
+основная раздача идёт из `dist/`, а релиз — украшение на случай, если руки дойдут.
+Кэш GitHub у raw-ссылки — минуты, поэтому после публикации новая версия может
+появиться не мгновенно.
 
 Локальный клон: `C:\Godot\_github\shagosad`. Токен лежит вне репозитория —
 `C:\Godot\_from_phone\gh_token.txt` (в `.gitignore` его нет, потому что он вообще
