@@ -77,12 +77,10 @@ C:\Godot\stepbuild\publish.ps1 -Message "что нового"
 `https://github.com/muzikamv-dot/shagosad/raw/main/dist/ShagoSad.apk`
 Отдаётся как `application/octet-stream`, браузер сразу скачивает `ShagoSad.apk`.
 
-Релизы (`release.ps1`, флаг `-WithRelease`) — необязательный второй канал.
-Причина: API GitHub при загрузке файла в релиз из скрипта стабильно отвечает
-«Multipart form data required», хотя тот же запрос вручную проходит. Поэтому
-основная раздача идёт из `dist/`, а релиз — украшение на случай, если руки дойдут.
-Кэш GitHub у raw-ссылки — минуты, поэтому после публикации новая версия может
-появиться не мгновенно.
+Релизы делаются автоматически тем же `publish.ps1`: если тега нет — `gh release create`
+с APK, если есть — `gh release upload --clobber`. Файл в релизе тот же, что установлен,
+это проверяется по SHA-256; затем проверяются обе ссылки.
+
 
 Локальный клон: `C:\Godot\_github\shagosad`. Токен лежит вне репозитория —
 `C:\Godot\_from_phone\gh_token.txt` (в `.gitignore` его нет, потому что он вообще
