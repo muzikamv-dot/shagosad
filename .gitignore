@@ -1,0 +1,18 @@
+# артефакты сборки
+out-*/
+base.apk
+unsigned.apk
+.rescache/
+*.rescache
+
+# секреты: ключи и пароли
+secrets.local.ps1
+*.keystore
+*.jks
+
+# архив старых спрайтов (39 МБ, для сборки не нужен)
+_sprites_archive/
+
+# временное
+_mail/
+*.tmp
