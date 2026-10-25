@@ -10,6 +10,15 @@
   <img src="screenshots/03-collection.png" width="230">
 </p>
 
+## Скачать
+
+Последняя сборка: **[ШагоСад.apk](https://github.com/muzikamv-dot/shagosad/releases/latest/download/ShagoSad.apk)** (0,6 МБ)
+
+Ссылка постоянная — всегда отдаёт самую свежую версию из раздела Releases.
+Android при установке спросит разрешение на установку из браузера и может
+предупредить через Play Protect: приложение подписано локальным ключом
+разработчика, а не собрано в Google Play.
+
 ## Что умеет
 
 - **Шаги** из аппаратного счётчика (`TYPE_STEP_COUNTER`) — подхватываются сами
