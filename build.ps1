@@ -143,26 +143,6 @@ Write-Host ("ГОТОВО: {0}" -f $apk.FullName) -ForegroundColor Green
 Write-Host ("        {0} МБ, всего {1}s" -f [math]::Round($apk.Length / 1MB, 1), [math]::Round($sw.Elapsed.TotalSeconds, 1)) -ForegroundColor Green
 Write-Host ("        SHA256 {0}" -f (Get-FileHash $apk.FullName -Algorithm SHA256).Hash) -ForegroundColor Green
 
-# ---------- копия на рабочий стол ----------
-# На столе всегда лежит свежий APK: имя с версией, старые копии удаляются.
-# Ошибка копирования не должна валить сборку: если папка недоступна, просто скажем.
-try {
-    $mf2 = [IO.File]::ReadAllText("$app\AndroidManifest.xml")
-    $dName = ([regex]::Match($mf2, 'versionName="([^"]+)"')).Groups[1].Value
-    $desktop = [Environment]::GetFolderPath('Desktop')
-    if (-not $desktop -or -not (Test-Path $desktop)) { $desktop = Join-Path $env:USERPROFILE 'Desktop' }
-    if (Test-Path $desktop) {
-        Get-ChildItem $desktop -Filter 'ШагоСад-*.apk' -ErrorAction SilentlyContinue |
-            Remove-Item -Force -ErrorAction SilentlyContinue
-        $dest = Join-Path $desktop ("ШагоСад-{0}.apk" -f $dName)
-        Copy-Item $apk.FullName $dest -Force
-        Write-Host ("        на рабочем столе: {0}" -f $dest) -ForegroundColor Green
-    } else {
-        Write-Host '        рабочий стол не найден, копия пропущена' -ForegroundColor Yellow
-    }
-} catch {
-    Write-Host ("        на рабочий стол не скопировалось: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
-}
 # ---------- установка ----------
 if ($Install) {
     Write-Host ''
