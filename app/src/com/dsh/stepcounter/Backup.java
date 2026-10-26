@@ -51,10 +51,28 @@ public final class Backup {
     public static String build(Context c) throws Exception {
         JSONObject o = new JSONObject();
         o.put("app", "stepcounter");
-        o.put("version", 1);
+        o.put("version", 2);
         o.put("exported", System.currentTimeMillis());
         o.put("garden", read(new File(c.getFilesDir(), "garden.json")));
         o.put("journal", read(new File(c.getFilesDir(), "journal.txt")));
+        // фото профиля: без него копия не полная, и после сброса его не вернуть
+        String avatar = "";
+        try {
+            java.io.File av = new java.io.File(c.getFilesDir(), "avatar.png");
+            if (av.exists()) {
+                java.io.FileInputStream in = new java.io.FileInputStream(av);
+                byte[] buf = new byte[(int) av.length()];
+                int off = 0;
+                while (off < buf.length) {
+                    int n = in.read(buf, off, buf.length - off);
+                    if (n <= 0) break;
+                    off += n;
+                }
+                in.close();
+                avatar = android.util.Base64.encodeToString(buf, android.util.Base64.NO_WRAP);
+            }
+        } catch (Exception ignored) { }
+        o.put("avatar", avatar);
         return o.toString();
     }
 
@@ -68,7 +86,21 @@ public final class Backup {
             if (garden.length() == 0) return -1;
             write(new File(c.getFilesDir(), "garden.json"), garden);
             if (journal.length() > 0) write(new File(c.getFilesDir(), "journal.txt"), journal);
-            return journal.length() > 0 ? 2 : 1;
+
+            String avatar = o.optString("avatar", "");
+            if (avatar.length() > 0) {
+                try {
+                    byte[] data = android.util.Base64.decode(avatar, android.util.Base64.NO_WRAP);
+                    java.io.FileOutputStream out = new java.io.FileOutputStream(
+                            new java.io.File(c.getFilesDir(), "avatar.png"), false);
+                    out.write(data);
+                    out.close();
+                } catch (Exception ignored) { }
+            }
+
+            int restored = journal.length() > 0 ? 2 : 1;
+            if (avatar.length() > 0) restored++;
+            return restored;
         } catch (Exception e) {
             return -1;
         }

@@ -446,9 +446,11 @@ public class SettingsActivity extends Activity {
                         + "• вся коллекция и букет\n"
                         + "• все собранные открытки\n"
                         + "• все достижения и медали\n"
+                        + "• купленные рамки\n"
+                        + "• имя и аватар (фото)\n"
                         + "• историю шагов за неделю\n"
                         + "• ручные шаги (тестовые)\n\n"
-                        + "Останутся: ник, аватар, рамка, норма шагов и настройки.\n\n"
+                        + "Останутся: норма шагов и настройки (тема, служба, напоминание).\n\n"
                         + "Действие необратимо.")
                 .setPositiveButton("Продолжить", new DialogInterface.OnClickListener() {
                     @Override public void onClick(DialogInterface d, int w) { secondConfirm(); }
@@ -500,8 +502,14 @@ public class SettingsActivity extends Activity {
 
     private void doReset() {
         game.resetProgress();
+        game.ensureIdentity();   // новый ник «Садовник #NNNN» и дата старта — сегодня
         game.gameVersion = GameState.GAME_VERSION;
         game.save(SettingsActivity.this);
+        // фото аватара тоже убираем: после полного сброса профиль должен быть чистым
+        try {
+            java.io.File av = new java.io.File(getFilesDir(), "avatar.png");
+            if (av.exists()) av.delete();
+        } catch (Exception ignored) { }
         // журнал шагов тоже стираем: иначе недельный график остаётся,
         // хотя «Шагов всего 0» — сброс выглядел недоделанным
         Steps.clearJournal(SettingsActivity.this);

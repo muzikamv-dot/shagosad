@@ -252,6 +252,15 @@ public class GameState {
         q1Done = 0; q1Claimed = 0;
         q2Done = 0; q2Claimed = 0;
         q3Done = 0; q3Claimed = 0;
+
+        // полный сброс: стираем и купленное, и личное — иначе после сброса
+        // остаются рамки за очки, старый ник и аватар
+        ownedFrames.clear();
+        avatarFrame = 0;
+        avatarStyle = 0;
+        avatarPalette = 0;
+        nick = "";
+        created = "";
     }
 
     /** Ник при первом запуске: «Садовник #2841». */

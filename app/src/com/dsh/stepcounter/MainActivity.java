@@ -138,6 +138,7 @@ public class MainActivity extends Activity {
         if (garden != null) garden.setGame(game);
         if (quests != null) quests.setGame(game);
         resumed = true;
+        loadAvatar();
         refreshAll();
         runSync();
         ui.removeCallbacks(ticker);
@@ -1151,6 +1152,9 @@ public class MainActivity extends Activity {
     }
 
     private void loadAvatar() {
+        // сбрасываем кэш: после сброса прогресса фото удалено, и старая
+        // картинка не должна висеть в профиле до перезапуска
+        avatarBitmap = null;
         try {
             File f = new File(getFilesDir(), "avatar.png");
             if (f.exists()) avatarBitmap = BitmapFactory.decodeFile(f.getAbsolutePath());
