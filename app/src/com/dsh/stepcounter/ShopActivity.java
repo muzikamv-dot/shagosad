@@ -17,12 +17,16 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-/** Магазин визуала: окантовки аватара за очки. */
+/** Магазин: украшения (рамки), инструменты и семена. */
 public class ShopActivity extends Activity {
+
+    private static final String[] TAB_NAMES = {"Украшения", "Инструменты", "Семена"};
 
     private GameState game;
     private LinearLayout list;
     private TextView pointsView;
+    private final TextView[] tabs = new TextView[TAB_NAMES.length];
+    private int tab = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -33,7 +37,6 @@ public class ShopActivity extends Activity {
         getWindow().setStatusBarColor(Color.TRANSPARENT);
         game = GameState.load(this);
         setContentView(build());
-        fill();
     }
 
     private int dp(int v) {
@@ -61,7 +64,7 @@ public class ShopActivity extends Activity {
         head.setGravity(Gravity.CENTER_VERTICAL);
 
         TextView title = new TextView(this);
-        title.setText("МАГАЗИН РАМОК");
+        title.setText("МАГАЗИН");
         title.setTextColor(Theme.ACCENT_SOFT);
         title.setTextSize(Ui.T_TITLE);
         title.setLetterSpacing(0.10f);
@@ -87,6 +90,30 @@ public class ShopActivity extends Activity {
         pointsView.setPadding(0, dp(6), 0, dp(12));
         root.addView(pointsView);
 
+        // вкладки магазина
+        LinearLayout tabRow = new LinearLayout(this);
+        tabRow.setOrientation(LinearLayout.HORIZONTAL);
+        tabRow.setPadding(0, 0, 0, dp(12));
+        for (int i = 0; i < TAB_NAMES.length; i++) {
+            final int mode = i;
+            TextView chip = new TextView(this);
+            chip.setText(TAB_NAMES[i]);
+            chip.setTextSize(12);
+            chip.setTypeface(Ui.medium());
+            chip.setGravity(Gravity.CENTER);
+            chip.setPadding(dp(12), dp(8), dp(12), dp(8));
+            chip.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { selectTab(mode); }
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.rightMargin = dp(8);
+            tabRow.addView(chip, lp);
+            tabs[i] = chip;
+        }
+        root.addView(tabRow);
+        root.addView(Ui.divider(this));
+
         ScrollView scroll = new ScrollView(this);
         list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -94,12 +121,30 @@ public class ShopActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         root.addView(scroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        selectTab(0);
         return root;
+    }
+
+    private void selectTab(int mode) {
+        tab = mode;
+        for (int i = 0; i < tabs.length; i++) {
+            if (tabs[i] == null) continue;
+            boolean on = i == mode;
+            GradientDrawable bg = new GradientDrawable();
+            bg.setCornerRadius(dp(18));
+            bg.setColor(on ? Theme.ACCENT : Theme.SURFACE_HI);
+            tabs[i].setBackground(bg);
+            tabs[i].setTextColor(on ? Theme.ON_ACCENT : Theme.MUTED);
+        }
+        fill();
     }
 
     private void fill() {
         list.removeAllViews();
         pointsView.setText("Очки: " + Shop.money(game.points) + " · " + game.level() + " уровень");
+
+        if (tab == 1) { fillTools(); return; }
+        if (tab == 2) { fillSeeds(); return; }
 
         for (int id = 0; id < Shop.FRAME_NAMES.length; id++) {
             list.addView(row(id));
@@ -196,6 +241,106 @@ public class ShopActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         rp.bottomMargin = dp(8);
         row.setLayoutParams(rp);
+        return row;
+    }
+
+    // ---------------- инструменты и семена (пока в разработке) ----------------
+
+    private void fillTools() {
+        list.addView(noteCard("Скоро в магазине",
+                "Инструменты понадобятся, если пропустить день. Пока их нельзя купить: "
+                        + "сначала нужно добавить сорняки и увядание в сам сад."));
+        list.addView(soonCard("Тяпка", "срезает сорняки после пропущенного дня"));
+        list.addView(soonCard("Лопата", "перекапывает землю, если цветок засох"));
+    }
+
+    private void fillSeeds() {
+        list.addView(noteCard("Семена в разработке",
+                "Здесь можно будет купить семя конкретного вида, чтобы вырастить цветок, "
+                        + "которого ещё нет в коллекции, вместо случайного."));
+        list.addView(soonCard("Семя редкого вида", "выбрать, какой цветок растить"));
+        list.addView(soonCard("Набор на неделю", "несколько семян со скидкой"));
+    }
+
+    /** Карточка-пояснение. */
+    private View noteCard(String title, String text) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(16), dp(14), dp(16), dp(14));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(22));
+        bg.setColor(Theme.SURFACE);
+        bg.setStroke(dp(1), Theme.CARD_STROKE);
+        box.setBackground(bg);
+
+        TextView t = new TextView(this);
+        t.setText(title);
+        t.setTextColor(Theme.TEXT);
+        t.setTextSize(13.5f);
+        t.setTypeface(Ui.medium());
+        box.addView(t);
+
+        TextView d = new TextView(this);
+        d.setText(text);
+        d.setTextColor(Theme.MUTED);
+        d.setTextSize(11.5f);
+        d.setPadding(0, dp(6), 0, 0);
+        d.setLineSpacing(dp(2), 1f);
+        box.addView(d);
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(12);
+        box.setLayoutParams(lp);
+        return box;
+    }
+
+    /** Строка будущего товара с пометкой «в разработке». */
+    private View soonCard(String name, String desc) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(16), dp(12), dp(16), dp(12));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(20));
+        bg.setColor(Theme.SURFACE);
+        bg.setStroke(dp(1), Theme.CARD_STROKE);
+        row.setBackground(bg);
+
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+
+        TextView t = new TextView(this);
+        t.setText(name);
+        t.setTextColor(Theme.TEXT);
+        t.setTextSize(13);
+        col.addView(t);
+
+        TextView d = new TextView(this);
+        d.setText(desc);
+        d.setTextColor(Theme.MUTED);
+        d.setTextSize(10.5f);
+        d.setPadding(0, dp(3), 0, 0);
+        col.addView(d);
+
+        row.addView(col, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView badge = new TextView(this);
+        badge.setText("в разработке");
+        badge.setTextSize(10);
+        badge.setTextColor(Theme.GOLD);
+        badge.setPadding(dp(8), dp(4), dp(8), dp(4));
+        GradientDrawable bb = new GradientDrawable();
+        bb.setCornerRadius(dp(12));
+        bb.setColor(Theme.SURFACE_HI);
+        badge.setBackground(bb);
+        row.addView(badge);
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(8);
+        row.setLayoutParams(lp);
         return row;
     }
 }
