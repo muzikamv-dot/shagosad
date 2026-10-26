@@ -12,6 +12,7 @@ import java.io.FileWriter;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Collections;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -100,7 +101,7 @@ final class Steps {
                 .apply();
     }
 
-    static void save(Context ctx, List<long[]> entries) {
+    static synchronized void save(Context ctx, List<long[]> entries) {
         long cutoff = System.currentTimeMillis() - KEEP_DAYS * 86400000L;
         StringBuilder sb = new StringBuilder();
         long lastKept = 0;
@@ -137,30 +138,47 @@ final class Steps {
      * делилась между днями пропорционально времени — из-за этого «сегодня»
      * выходило на тысячи меньше, чем в Google Fit.
      */
-    static boolean add(Context ctx, long wall, long elapsed, long raw) {
+    static synchronized boolean add(Context ctx, long wall, long elapsed, long raw) {
+        return addAll(ctx, Collections.singletonList(new long[]{wall, elapsed, raw})) > 0;
+    }
+
+    /** То же, но пачкой: буфер датчика может принести сотни замеров за один сеанс. */
+    static synchronized int addAll(Context ctx, List<long[]> fresh) {
+        if (fresh == null || fresh.isEmpty()) return 0;
+
         List<long[]> list = load(ctx);
+        int saved = 0;
+        long maxElapsed = prefs(ctx).getLong(KEY_LAST_ELAPSED, -1);
 
-        // повтор уже записанного замера — буфер может прислать его снова
-        int from = Math.max(0, list.size() - 60);
-        for (int i = from; i < list.size(); i++) {
-            long[] e = list.get(i);
-            if (Math.abs(e[1] - elapsed) < 1000000000L && Math.abs(e[0] - wall) < 2000L) {
-                return false;
+        for (long[] n : fresh) {
+            if (n == null) continue;
+
+            // повтор уже записанного замера — буфер может прислать его снова
+            boolean dup = false;
+            int from = Math.max(0, list.size() - 80);
+            for (int i = from; i < list.size(); i++) {
+                long[] e = list.get(i);
+                if (Math.abs(e[1] - n[1]) < 1000000000L && Math.abs(e[0] - n[0]) < 2000L) {
+                    dup = true;
+                    break;
+                }
             }
+            if (dup) continue;
+
+            // порядок — по «настенным» часам: только он не путается после
+            // перезагрузки телефона, когда метка датчика начинается с нуля
+            int pos = list.size();
+            while (pos > 0 && list.get(pos - 1)[0] > n[0]) pos--;
+            list.add(pos, n);
+            if (n[1] > maxElapsed) maxElapsed = n[1];
+            saved++;
         }
 
-        // порядок — по «настенным» часам: только он не путается после
-        // перезагрузки телефона, когда метка датчика начинается с нуля
-        int pos = list.size();
-        while (pos > 0 && list.get(pos - 1)[0] > wall) pos--;
-        list.add(pos, new long[]{wall, elapsed, raw});
-        save(ctx, list);
-
-        SharedPreferences p = prefs(ctx);
-        if (elapsed > p.getLong(KEY_LAST_ELAPSED, -1)) {
-            p.edit().putLong(KEY_LAST_ELAPSED, elapsed).apply();
+        if (saved > 0) {
+            save(ctx, list);
+            prefs(ctx).edit().putLong(KEY_LAST_ELAPSED, maxElapsed).apply();
         }
-        return true;
+        return saved;
     }
 
     // ---------------- арифметика по дням ----------------

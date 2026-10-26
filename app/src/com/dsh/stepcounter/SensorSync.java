@@ -74,13 +74,15 @@ final class SensorSync {
 
         int saved = 0;
         synchronized (events) {
+            List<long[]> batch = new ArrayList<>(events.size());
             for (SensorEvent e : events) {
                 if (e == null || e.values == null || e.values.length == 0) continue;
                 long wall = anchorWall - (anchorElapsed - e.timestamp) / 1000000L;
                 long raw = Math.round(e.values[0]);
-                if (Steps.add(ctx, wall, e.timestamp, raw)) saved++;
+                batch.add(new long[]{wall, e.timestamp, raw});
                 r.raw = (int) raw;
             }
+            saved = Steps.addAll(ctx, batch);
             r.batchSize = events.size();
         }
 
@@ -96,6 +98,8 @@ final class SensorSync {
         sb.append("\nМакс. задержка датчика: ").append(maxDelay / 1000000L).append(" мс");
         sb.append("\nПолучено за сеанс: ").append(events.size()).append(", новых: ").append(saved);
         r.diag = sb.toString();
+        android.util.Log.i("SensorSync", "событий " + events.size() + ", записано " + saved
+                + ", батчинг " + (fifoMax > 0 ? "да" : "нет") + ", raw " + r.raw);
 
         r.today = Steps.refreshToday(ctx);
         return r;
