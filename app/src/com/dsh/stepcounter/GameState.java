@@ -272,10 +272,11 @@ public class GameState {
         return Math.max(1, d + 1);
     }
 
-    /** Купить окантовку за очки. */
+    /** Купить окантовку за очки. Дорогие рамки ещё и требуют уровня. */
     public boolean buyFrame(int id) {
         if (id <= 0 || id >= Shop.FRAME_PRICES.length) return false;
         if (ownedFrames.contains(id)) return false;
+        if (level() < Shop.FRAME_LEVEL[id]) return false;
         int price = Shop.FRAME_PRICES[id];
         if (points < price) return false;
         points -= price;

@@ -25,7 +25,25 @@ public final class Shop {
             "Кристальная", "Звёздная", "Лавровая", "Неоновая"
     };
 
-    public static final int[] FRAME_PRICES = {0, 150, 250, 350, 500, 650, 800, 1000};
+    /**
+     * Цены растут быстрее дохода: первая рамка за день-два, последняя — за месяц.
+     * При доходе ≈343 очка в день весь магазин (24 500) закрывается примерно за 71 день.
+     */
+    public static final int[] FRAME_PRICES = {0, 400, 900, 1600, 2600, 4000, 6000, 9000};
+
+    /** Минимальный уровень для покупки: рамка — ещё и награда за путь. 0 — без ограничения. */
+    public static final int[] FRAME_LEVEL = {0, 0, 0, 5, 8, 12, 18, 25};
+
+    /** Цена с пробелами между тысячами: 9 000 вместо 9000. */
+    public static String money(int v) {
+        String s = String.valueOf(v);
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            if (i > 0 && (s.length() - i) % 3 == 0) b.append(' ');
+            b.append(s.charAt(i));
+        }
+        return b.toString();
+    }
 
     private Shop() { }
 

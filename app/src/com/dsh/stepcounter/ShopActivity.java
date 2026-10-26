@@ -99,7 +99,7 @@ public class ShopActivity extends Activity {
 
     private void fill() {
         list.removeAllViews();
-        pointsView.setText("Очки: " + game.points);
+        pointsView.setText("Очки: " + Shop.money(game.points) + " · " + game.level() + " уровень");
 
         for (int id = 0; id < Shop.FRAME_NAMES.length; id++) {
             list.addView(row(id));
@@ -139,8 +139,14 @@ public class ShopActivity extends Activity {
         name.setTextSize(13.5f);
         col.addView(name);
 
+        int needLevel = Shop.FRAME_LEVEL[id];
+        boolean levelOk = game.level() >= needLevel;
+
         TextView sub = new TextView(this);
-        sub.setText(owned ? (active ? "выбрана" : "куплена") : Shop.FRAME_PRICES[id] + " очков");
+        sub.setText(owned
+                ? (active ? "выбрана" : "куплена")
+                : Shop.money(Shop.FRAME_PRICES[id]) + " очков"
+                        + (needLevel > 0 ? " · с " + needLevel + " уровня" : ""));
         sub.setTextColor(Color.parseColor(owned ? "#6FD6AE" : "#7E9A8F"));
         sub.setTextSize(10.5f);
         col.addView(sub);
@@ -158,7 +164,8 @@ public class ShopActivity extends Activity {
         bd.setColor(owned ? (active ? Theme.SURFACE_HI : Theme.SURFACE) : Theme.ACCENT);
         action.setBackground(bd);
         action.setStateListAnimator(null);
-        action.setText(owned ? (active ? "выбрана" : "надеть") : "купить");
+        action.setText(owned ? (active ? "выбрана" : "надеть")
+                : (levelOk ? "купить" : "с " + needLevel + " ур."));
         action.setEnabled(!active);
 
         action.setOnClickListener(new View.OnClickListener() {
@@ -167,6 +174,9 @@ public class ShopActivity extends Activity {
                     game.selectFrame(id);
                     game.save(ShopActivity.this);
                     fill();
+                } else if (!levelOk) {
+                    Toast.makeText(ShopActivity.this,
+                            "Рамка откроется с " + needLevel + " уровня", Toast.LENGTH_SHORT).show();
                 } else {
                     if (game.buyFrame(id)) {
                         game.save(ShopActivity.this);
