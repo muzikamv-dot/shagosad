@@ -23,6 +23,7 @@ public class BootReceiver extends BroadcastReceiver {
 
         Context app = context.getApplicationContext();
         AlarmScheduler.schedule(app);
+        SyncJobService.schedule(app);
 
         boolean serviceOn = Steps.prefs(app).getBoolean(Steps.KEY_SERVICE, false);
         if (!serviceOn) {

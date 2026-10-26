@@ -102,41 +102,64 @@ final class Steps {
 
     static void save(Context ctx, List<long[]> entries) {
         long cutoff = System.currentTimeMillis() - KEEP_DAYS * 86400000L;
+        StringBuilder sb = new StringBuilder();
+        long lastKept = 0;
+        int lastStart = -1;
+        for (long[] e : entries) {
+            if (e[0] < cutoff) continue;
+            // прореживаем до одного замера в минуту. Слишком частые не выбрасываем,
+            // а заменяем предыдущую запись свежей — так в журнале всегда самое
+            // актуальное значение, но файл не пухнет на тысячи строк в сутки.
+            if (lastKept != 0 && e[0] - lastKept < 60000L) {
+                sb.setLength(lastStart);
+            }
+            lastStart = sb.length();
+            sb.append(e[0]).append('|').append(e[1]).append('|').append(e[2]).append('\n');
+            lastKept = e[0];
+        }
         File f = new File(ctx.getFilesDir(), FILE);
         FileWriter w = null;
         try {
             w = new FileWriter(f, false);
-            for (long[] e : entries) {
-                if (e[0] < cutoff) continue;
-                w.write(e[0] + "|" + e[1] + "|" + e[2] + "\n");
-            }
+            w.write(sb.toString());
         } catch (Exception ignored) {
         } finally {
             try { if (w != null) w.close(); } catch (Exception ignored) { }
         }
     }
 
-    /** Добавить замер, если он новее последнего сохранённого. */
+    /**
+     * Добавить замер.
+     *
+     * Принимает и СТАРЫЕ замеры из буфера датчика: именно они дают точные метки
+     * времени для шагов, сделанных без приложения. Раньше такие замеры
+     * отбрасывались, журнал оставался редким, и пачка шагов за несколько часов
+     * делилась между днями пропорционально времени — из-за этого «сегодня»
+     * выходило на тысячи меньше, чем в Google Fit.
+     */
     static boolean add(Context ctx, long wall, long elapsed, long raw) {
         List<long[]> list = load(ctx);
-        long lastElapsed = -1;
-        if (!list.isEmpty()) {
-            lastElapsed = list.get(list.size() - 1)[1];
-        }
-        SharedPreferences p = prefs(ctx);
-        lastElapsed = Math.max(lastElapsed, p.getLong(KEY_LAST_ELAPSED, -1));
 
-        // после перезагрузки метки датчика начинаются заново — сбрасываем «последнюю»
-        if (lastElapsed >= 0 && elapsed + 1000L < lastElapsed) {
-            lastElapsed = -1;
-            p.edit().putLong(KEY_LAST_ELAPSED, 0).apply();
+        // повтор уже записанного замера — буфер может прислать его снова
+        int from = Math.max(0, list.size() - 60);
+        for (int i = from; i < list.size(); i++) {
+            long[] e = list.get(i);
+            if (Math.abs(e[1] - elapsed) < 1000000000L && Math.abs(e[0] - wall) < 2000L) {
+                return false;
+            }
         }
 
-        if (elapsed <= lastElapsed) return false;
-
-        list.add(new long[]{wall, elapsed, raw});
+        // порядок — по «настенным» часам: только он не путается после
+        // перезагрузки телефона, когда метка датчика начинается с нуля
+        int pos = list.size();
+        while (pos > 0 && list.get(pos - 1)[0] > wall) pos--;
+        list.add(pos, new long[]{wall, elapsed, raw});
         save(ctx, list);
-        p.edit().putLong(KEY_LAST_ELAPSED, elapsed).apply();
+
+        SharedPreferences p = prefs(ctx);
+        if (elapsed > p.getLong(KEY_LAST_ELAPSED, -1)) {
+            p.edit().putLong(KEY_LAST_ELAPSED, elapsed).apply();
+        }
         return true;
     }
 

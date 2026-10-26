@@ -120,6 +120,7 @@ public class MainActivity extends Activity {
         game.save(this);
         setContentView(buildUi());
         AlarmScheduler.schedule(this);
+        SyncJobService.schedule(this);   // замер шагов в фоне: точная разбивка по дням
         askFirstRunPermissions();
 
         SharedPreferences sp = getSharedPreferences(Steps.PREFS, MODE_PRIVATE);
