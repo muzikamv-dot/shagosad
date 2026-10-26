@@ -90,7 +90,8 @@ public class ShopActivity extends Activity {
         pointsView.setPadding(0, dp(6), 0, dp(12));
         root.addView(pointsView);
 
-        // вкладки магазина
+        // вкладки магазина: три овала одного размера на всю ширину,
+        // текст по центру, промежутки только между ними
         LinearLayout tabRow = new LinearLayout(this);
         tabRow.setOrientation(LinearLayout.HORIZONTAL);
         tabRow.setPadding(0, 0, 0, dp(12));
@@ -101,13 +102,14 @@ public class ShopActivity extends Activity {
             chip.setTextSize(12);
             chip.setTypeface(Ui.medium());
             chip.setGravity(Gravity.CENTER);
-            chip.setPadding(dp(12), dp(8), dp(12), dp(8));
+            chip.setIncludeFontPadding(false);
+            chip.setPadding(dp(4), 0, dp(4), 0);
             chip.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) { selectTab(mode); }
             });
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.rightMargin = dp(8);
+                    0, dp(38), 1f);
+            if (i > 0) lp.leftMargin = dp(8);
             tabRow.addView(chip, lp);
             tabs[i] = chip;
         }
@@ -131,7 +133,7 @@ public class ShopActivity extends Activity {
             if (tabs[i] == null) continue;
             boolean on = i == mode;
             GradientDrawable bg = new GradientDrawable();
-            bg.setCornerRadius(dp(18));
+            bg.setCornerRadius(dp(19));   // половина высоты 38dp — настоящий овал
             bg.setColor(on ? Theme.ACCENT : Theme.SURFACE_HI);
             tabs[i].setBackground(bg);
             tabs[i].setTextColor(on ? Theme.ON_ACCENT : Theme.MUTED);

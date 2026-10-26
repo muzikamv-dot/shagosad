@@ -110,6 +110,7 @@ public class CollectionActivity extends Activity {
         root.addView(countView);
 
         // фильтры
+        // фильтры: три овала одного размера на всю ширину, текст по центру
         LinearLayout filters = new LinearLayout(this);
         filters.setOrientation(LinearLayout.HORIZONTAL);
         filters.setPadding(pad, 0, pad, dp(12));
@@ -121,13 +122,16 @@ public class CollectionActivity extends Activity {
             chip.setTextSize(12);
             chip.setTypeface(Ui.medium());
             chip.setGravity(Gravity.CENTER);
-            chip.setPadding(dp(14), dp(8), dp(14), dp(8));
+            chip.setIncludeFontPadding(false);
+            chip.setPadding(dp(4), 0, dp(4), 0);
             chip.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) { selectFilter(mode); }
             });
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.rightMargin = dp(8);
+                    0, dp(38), 1f);
+            // зазор 10dp подобран так, чтобы три овала делились на ширину экрана
+            // без остатка (при 8dp третья колонка была на пиксель шире)
+            if (i > 0) lp.leftMargin = dp(10);
             filters.addView(chip, lp);
             chips[i] = chip;
         }
@@ -155,7 +159,7 @@ public class CollectionActivity extends Activity {
             if (chips[i] == null) continue;
             boolean on = i == mode;
             GradientDrawable bg = new GradientDrawable();
-            bg.setCornerRadius(dp(18));
+            bg.setCornerRadius(dp(19));   // половина высоты 38dp — настоящий овал
             bg.setColor(on ? Theme.ACCENT : Theme.SURFACE_HI);
             chips[i].setBackground(bg);
             chips[i].setTextColor(on ? Theme.ON_ACCENT : Theme.MUTED);
