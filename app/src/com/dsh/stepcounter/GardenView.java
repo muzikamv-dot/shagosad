@@ -402,13 +402,38 @@ public class GardenView extends View {
         if (isShown() && hasWindowFocus()) postInvalidateDelayed(33);
     }
 
+    // Полив срабатывает только по настоящему нажатию. Раньше действие
+    // запускалось на ACTION_DOWN, поэтому любой свайп по саду считался
+    // нажатием и выкидывал «Нужна вода» — теперь ждём ACTION_UP и проверяем,
+    // что палец не уехал дальше порога.
+    private float downX, downY;
+    private boolean pressed;
+
     @Override
     public boolean onTouchEvent(MotionEvent e) {
-        if (e.getAction() == MotionEvent.ACTION_DOWN) {
-            if (card.contains(e.getX(), e.getY()) || buttonRect.contains(e.getX(), e.getY())) {
-                if (listener != null) listener.onTap();
+        float slop = 14 * d;
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                downX = e.getX();
+                downY = e.getY();
+                pressed = card.contains(downX, downY) || buttonRect.contains(downX, downY);
+                return pressed;
+            case MotionEvent.ACTION_MOVE:
+                if (pressed
+                        && (Math.abs(e.getX() - downX) > slop || Math.abs(e.getY() - downY) > slop)) {
+                    pressed = false;   // это свайп или прокрутка, а не нажатие
+                }
                 return true;
-            }
+            case MotionEvent.ACTION_UP:
+                boolean tap = pressed
+                        && Math.abs(e.getX() - downX) <= slop
+                        && Math.abs(e.getY() - downY) <= slop;
+                pressed = false;
+                if (tap && listener != null) listener.onTap();
+                return true;
+            case MotionEvent.ACTION_CANCEL:
+                pressed = false;       // родитель перехватил жест под свайп
+                return true;
         }
         return super.onTouchEvent(e);
     }
