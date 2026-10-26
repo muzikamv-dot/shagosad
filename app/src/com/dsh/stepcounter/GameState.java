@@ -313,13 +313,48 @@ public class GameState {
         return Math.max(100, goal / 10);
     }
 
+    /**
+     * Звания по уровню. Первые пять — прежние, поэтому у существующих игроков
+     * звание не меняется; новые ступени добавлены выше и растянуты под экономику
+     * (уровень = 1 + заработано/100, при ≈343 очках в день).
+     */
+    private static final String[] RANKS = {
+            "Новичок", "Садовник", "Знаток", "Мастер", "Хранитель сада",
+            "Легенда сада", "Хозяин сада", "Хранитель времени", "Сердце сада",
+            "Звёздный садовник", "Вечный цвет", "Сад-вселенная"
+    };
+
+    /** С какого уровня начинается звание. */
+    private static final int[] RANK_LEVEL = {1, 3, 6, 11, 21, 36, 56, 81, 116, 161, 221, 301};
+
     public String rank() {
         int l = level();
-        if (l < 3) return "Новичок";
-        if (l < 6) return "Садовник";
-        if (l < 11) return "Знаток";
-        if (l < 21) return "Мастер";
-        return "Хранитель сада";
+        int idx = 0;
+        for (int i = 0; i < RANK_LEVEL.length; i++) {
+            if (l >= RANK_LEVEL[i]) idx = i;
+        }
+        return RANKS[idx];
+    }
+
+    /** Сколько очков осталось до следующего звания; 0 — это последнее. */
+    public int pointsToNextRank() {
+        int l = level();
+        for (int i = 0; i < RANK_LEVEL.length; i++) {
+            if (l < RANK_LEVEL[i]) {
+                int need = (RANK_LEVEL[i] - 1) * 100 - earned;
+                return Math.max(0, need);
+            }
+        }
+        return 0;
+    }
+
+    /** Название следующего звания; пусто, если достигнуто последнее. */
+    public String nextRank() {
+        int l = level();
+        for (int i = 0; i < RANK_LEVEL.length; i++) {
+            if (l < RANK_LEVEL[i]) return RANKS[i];
+        }
+        return "";
     }
 
     public void save(Context ctx) {

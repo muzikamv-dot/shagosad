@@ -1265,7 +1265,12 @@ public class MainActivity extends Activity {
         avatar.setNick(game.nick);
         nickView.setText(game.nick);
         rankView.setText(game.rank() + " · " + game.level() + " уровень");
-        profSub.setText("в саду с " + humanDate(game.created));
+        // сколько осталось до следующего звания — видно, к чему идёшь
+        int toNext = game.pointsToNextRank();
+        String nextRank = game.nextRank();
+        profSub.setText(nextRank.isEmpty()
+                ? "в саду с " + humanDate(game.created)
+                : "до звания «" + nextRank + "» " + fmt(toNext) + " очков");
         if (pointsCount != null) pointsCount.set(game.points);
         statS.setText(game.streak + " дн.");
         statW.setText(String.valueOf(game.wateredTotal));
