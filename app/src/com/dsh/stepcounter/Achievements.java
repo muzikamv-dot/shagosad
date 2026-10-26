@@ -77,7 +77,7 @@ public final class Achievements {
             if (g.unlocked.contains(a.id)) continue;
             if (progress(a, g, daySteps) >= a.target) {
                 g.unlocked.add(a.id);
-                g.points += 60;
+                g.earn(60);
                 fresh.add(a);
             }
         }

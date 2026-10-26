@@ -72,7 +72,7 @@ public class QuestsView extends View {
                 Math.min(1, game.flowersToday), 1, game.flowersToday >= 1, "+40 очков", Theme.ACCENT);
         y += 78 * d;
         quest(c, pad, y, w - pad * 2, "Неделя: 7 цветов",
-                Math.min(7, game.weekFlowers), 7, game.weekFlowers >= 7, "+300 очков", Theme.GOLD);
+                Math.min(7, game.weekFlowers), 7, game.q3Claimed == 1, "+300 очков", Theme.GOLD);
 
         // неделя: тот же шаг, что и между заданиями (было +14dp сверху,
         // из-за чего блок «ЭТА НЕДЕЛЯ» висел заметно ниже остальных)

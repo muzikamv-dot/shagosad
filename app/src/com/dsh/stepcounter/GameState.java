@@ -34,6 +34,8 @@ public class GameState {
 
     public int water = 0;
     public int points = 0;
+    /** Сколько очков заработано за всё время: от этого считается уровень, покупки его не снижают. */
+    public int earned = 0;
     public int goal = 10000;
     public int streak = 0;
     public int bestStreak = 0;
@@ -87,9 +89,17 @@ public class GameState {
 
     private static final String FILE = "garden.json";
 
-    public static int level(int points) { return 1 + points / 100; }
-    public int level() { return level(points); }
-    public int levelProgress() { return points % 100; }
+    /** Уровень считается от заработанного за всё время, а не от остатка. */
+    public static int level(int earnedPoints) { return 1 + earnedPoints / 100; }
+    public int level() { return level(earned); }
+    public int levelProgress() { return earned % 100; }
+
+    /** Начислить очки: баланс и «заработано за всё время» растут вместе. */
+    public void earn(int n) {
+        if (n <= 0) return;
+        points += n;
+        earned += n;
+    }
 
     // ---------------- загрузка/сохранение ----------------
 
@@ -112,6 +122,7 @@ public class GameState {
 
             g.water = o.optInt("water", 0);
             g.points = o.optInt("points", 0);
+            g.earned = o.optInt("earned", -1);
             g.goal = o.optInt("goal", 10000);
             g.streak = o.optInt("streak", 0);
             g.bestStreak = o.optInt("bestStreak", 0);
@@ -154,6 +165,17 @@ public class GameState {
             g.avatarFrame = o.optInt("avatarFrame", 0);
             JSONArray fr = o.optJSONArray("ownedFrames");
             if (fr != null) for (int i = 0; i < fr.length(); i++) g.ownedFrames.add(fr.optInt(i));
+
+            // старое сохранение не знает про earned: восстанавливаем его как
+            // остаток плюс то, что уже потрачено на купленные рамки
+            if (g.earned < 0) {
+                int spent = 0;
+                for (int id : g.ownedFrames) {
+                    if (id > 0 && id < Shop.FRAME_PRICES.length) spent += Shop.FRAME_PRICES[id];
+                }
+                g.earned = g.points + spent;
+            }
+
             g.created = o.optString("created", "");
             g.totalSteps = o.optInt("totalSteps", 0);
             g.bestDay = o.optInt("bestDay", 0);
@@ -205,6 +227,7 @@ public class GameState {
     public void resetProgress() {
         water = 0;
         points = 0;
+        earned = 0;
         streak = 0;
         bestStreak = 0;
         lastWaterDay = "";
@@ -303,6 +326,7 @@ public class GameState {
             JSONObject o = new JSONObject();
             o.put("water", water);
             o.put("points", points);
+            o.put("earned", earned);
             o.put("goal", goal);
             o.put("streak", streak);
             o.put("bestStreak", bestStreak);
@@ -378,6 +402,7 @@ public class GameState {
         if (weekStart != wk) {
             weekStart = wk;
             weekFlowers = 0;
+            q3Claimed = 0;   // недельное задание можно забрать снова
         }
         if (!today.equals(waterDay)) {
             waterDay = today;
@@ -412,6 +437,7 @@ public class GameState {
         if (weekStart != wk) {
             weekStart = wk;
             weekFlowers = 0;
+            q3Claimed = 0;   // недельное задание можно забрать снова
         }
 
         int cost = Math.max(1, stepCost());
@@ -441,6 +467,7 @@ public class GameState {
         stepsCacheDay = today;
         if (stepsToday > bestDay) bestDay = stepsToday;
         if (stepsToday > q1Done) q1Done = Math.min(stepsToday, q1Target);
+        questsClaimed();   // задание по шагам закрывается сразу, без полива
         return true;
     }
 
@@ -450,12 +477,16 @@ public class GameState {
         return Math.max(0, cost - waterProgress);
     }
 
+    /**
+     * Забрать выполненные задания: три дневных и недельное.
+     * Суммы совпадают с тем, что написано на экране заданий.
+     */
     public boolean questsClaimed() {
         int add = 0;
-        if (q1Done >= q1Target && q1Claimed == 0) { q1Claimed = 1; add += 1; }
-        if (q2Done >= q2Target && q2Claimed == 0) { q2Claimed = 1; add += 1; }
-        if (q3Done >= 1 && q3Claimed == 0) { q3Claimed = 1; add += 1; }
-        if (add > 0) { points += add * 40; return true; }
+        if (q1Done >= q1Target && q1Claimed == 0) { q1Claimed = 1; add += 60; }
+        if (flowersToday >= 1 && q2Claimed == 0) { q2Claimed = 1; add += 40; }
+        if (weekFlowers >= 7 && q3Claimed == 0) { q3Claimed = 1; add += 300; }
+        if (add > 0) { earn(add); return true; }
         return false;
     }
 
@@ -464,18 +495,21 @@ public class GameState {
     public void collect() {
         int sp = species[0];
         if (!bloomed.contains(sp)) bloomed.add(sp);
-        points += 100;
+        earn(100);
         flowersToday++;
         flowersTotal++;
+        q2Done = flowersToday;
         if (weekStartOf(Steps.today()) != weekStart) {
             weekStart = weekStartOf(Steps.today());
             weekFlowers = 0;
+            q3Claimed = 0;
         }
         weekFlowers++;
         cards.add(new Card(flowersTotal, sp, Species.name(sp), Steps.today(), Species.wish(sp)));
 
         stage[0] = 0;
         species[0] = nextSpecies();
+        questsClaimed();   // задания по цветку и неделе закрываются сразу
     }
 
     /** Следующий вид: сначала те, которых ещё нет в букете. */
@@ -496,10 +530,9 @@ public class GameState {
 
         water--;
         stage[index]++;
-        points += 10;
+        earn(10);
         wateredTotal++;
         wateredToday++;
-        q2Done = wateredToday;
 
         if (!today.equals(lastWaterDay)) {
             int yesterday = dayNumber(today) - 1;
@@ -507,7 +540,6 @@ public class GameState {
             lastWaterDay = today;
             if (streak > bestStreak) bestStreak = streak;
         }
-        q3Done = 1;
         questsClaimed();
         return true;
     }
