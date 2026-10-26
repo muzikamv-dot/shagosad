@@ -203,6 +203,16 @@ public class GameState {
             g.stepsCacheDay = o.optString("stepsCacheDay", "");
             g.gameVersion = o.optInt("gameVersion", 0);
 
+            // Прогресс до лейки привязан к дню. Если кэш шагов остался от другого
+            // дня, остаток «до лейки» устарел — иначе получалось «шагов сегодня 0,
+            // а до лейки 165»: число тянулось со вчерашнего вечера.
+            if (!g.stepsCacheDay.equals(Steps.today())) {
+                g.waterProgress = 0;
+                g.stepsMark = 0;
+                g.waterDay = "";
+                g.stepsCache = 0;
+            }
+
             JSONArray cd = o.optJSONArray("cards");
             if (cd != null) {
                 for (int i = 0; i < cd.length(); i++) {
@@ -272,6 +282,9 @@ public class GameState {
         q1Done = 0; q1Claimed = 0;
         q2Done = 0; q2Claimed = 0;
         q3Done = 0; q3Claimed = 0;
+        waterProgress = 0;
+        stepsMark = 0;
+        questDay = 0;
 
         // полный сброс: стираем и купленное, и личное — иначе после сброса
         // остаются рамки за очки, старый ник и аватар
@@ -483,6 +496,11 @@ public class GameState {
         if (!today.equals(waterDay)) {
             waterDay = today;
             stepsAtWater = 0;
+            // Прогресс до следующей лейки считается заново каждый день. Раньше
+            // здесь менялся только waterDay, а waterProgress тянулся со вчера:
+            // получалось «шагов сегодня 0, а до лейки 165».
+            waterProgress = 0;
+            stepsMark = 0;
         }
     }
 
@@ -520,21 +538,20 @@ public class GameState {
 
         if (!today.equals(waterDay)) {
             waterDay = today;
-            stepsMark = stepsToday;
+            stepsMark = 0;      // за сегодня ещё ничего не начислено
             waterProgress = 0;
         }
 
-        int delta = stepsToday - stepsMark;
-        if (delta < 0) delta = stepsToday;
-        stepsMark = stepsToday;
-
-        if (delta > 0) {
-            waterProgress += delta;
-            while (waterProgress >= cost) {
-                waterProgress -= cost;
-                water++;
-            }
+        // stepsMark — сколько шагов сегодня уже превращено в лейки.
+        // Остаток считаем от него, а не «копим», поэтому число всегда сходится
+        // с шагами за сегодня и не тянется со вчерашнего дня.
+        if (stepsToday < stepsMark) stepsMark = 0;   // счётчик обнулился
+        int add = (stepsToday - stepsMark) / cost;
+        if (add > 0) {
+            water += add;
+            stepsMark += add * cost;
         }
+        waterProgress = Math.max(0, Math.min(cost - 1, stepsToday - stepsMark));
 
         if (today.equals(stepsCacheDay)) {
             if (stepsToday > stepsCache) totalSteps += stepsToday - stepsCache;

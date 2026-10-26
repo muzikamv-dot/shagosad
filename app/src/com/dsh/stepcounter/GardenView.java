@@ -62,15 +62,20 @@ public class GardenView extends View {
 
     // ---- анимации инструментов ----
     private float cutAnim = -1f;   // 0..1 — тяпка срезает сорняк
+    private int cutSide = 1;       // -1 — левое гнездо, +1 — правое (удар с другой стороны)
     private float digAnim = -1f;   // 0..1 — лопата выкапывает засохший цветок
     private Runnable cutDone, digDone;
 
-    /** Анимация: тяпка срезает сорняк, потом действие применяется. */
-    public void cutWeeds(final Runnable done) {
+    private static final long CUT_MS = 640L;
+    private static final long DIG_MS = 1150L;
+
+    /** Анимация: тяпка срезает сорняк. side — с какой стороны замах. */
+    public void cutWeeds(int side, final Runnable done) {
         if (cutAnim >= 0f) return;
+        cutSide = side >= 0 ? 1 : -1;
         cutDone = done;
         android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(0f, 1f);
-        a.setDuration(430L);
+        a.setDuration(CUT_MS);
         a.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
             @Override public void onAnimationUpdate(android.animation.ValueAnimator v) {
                 cutAnim = (Float) v.getAnimatedValue();
@@ -89,12 +94,18 @@ public class GardenView extends View {
         a.start();
     }
 
-    /** Анимация: лопата выкапывает засохший цветок, потом действие применяется. */
+    /** Срезаем последний сорняк: с той стороны, где он растёт. */
+    public void cutWeeds(final Runnable done) {
+        int idx = game == null ? 0 : Math.max(0, game.weeds - 1);
+        cutWeeds(idx % 2 == 0 ? -1 : 1, done);
+    }
+
+    /** Анимация: лопата входит в землю, цветок валится и уходит вниз. */
     public void digOut(final Runnable done) {
         if (digAnim >= 0f) return;
         digDone = done;
         android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(0f, 1f);
-        a.setDuration(700L);
+        a.setDuration(DIG_MS);
         a.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
             @Override public void onAnimationUpdate(android.animation.ValueAnimator v) {
                 digAnim = (Float) v.getAnimatedValue();
@@ -396,6 +407,11 @@ public class GardenView extends View {
         c.save();
         c.scale(pulse, pulse, w / 2f, plantBottom);
         c.translate(0, sink);
+        if (digAnim >= 0f) {
+            // при перекопке растение заваливается набок, прежде чем уйти вниз
+            float tilt = (float) Math.sin(Math.min(1f, digAnim * 1.6f) * Math.PI * 0.5f) * 14f;
+            c.rotate(tilt, w / 2f, plantBottom);
+        }
         if (game.withered) {
             drawWithered(c, w / 2f, plantBottom, fsize, time, plantAlpha);
         } else {
@@ -404,11 +420,13 @@ public class GardenView extends View {
         c.restore();
         p.setAlpha(255);
 
-        // сорняки растут у основания, пока их не срежут тяпкой
+        // сорняки растут у основания, пока их не срежут тяпкой.
+        // Начиная с момента удара срезанный уже не рисуем.
         if (!game.withered && game.weeds > 0) {
-            drawWeeds(c, w / 2f, plantBottom, fsize, game.weeds, time);
+            int hide = cutAnim >= 0.5f ? (game.weeds - 1) : -1;
+            drawWeeds(c, w / 2f, plantBottom, fsize, game.weeds, time, hide);
         }
-        if (cutAnim >= 0f) drawHoeSwing(c, w / 2f, plantBottom, fsize);
+        if (cutAnim >= 0f) drawHoeStrike(c, w / 2f, plantBottom, fsize);
         if (digAnim >= 0f) drawShovelDig(c, w / 2f, plantBottom, fsize);
 
         // стадии
@@ -530,44 +548,6 @@ public class GardenView extends View {
         return super.onTouchEvent(e);
     }
 
-    // ---------------- инструменты в действии ----------------
-
-    /** Взмах тяпкой по сорнякам: лезвие идёт по дуге, травинки летят. */
-    private void drawHoeSwing(Canvas c, float cx, float baseY, float size) {
-        float t = cutAnim;
-        float pivotY = baseY - size * 0.16f;
-        c.save();
-        c.rotate(-60f + 120f * t, cx, pivotY);
-        ToolIcon.draw(c, ToolIcon.HOE, cx + size * 0.30f, pivotY, size * 0.30f);
-        c.restore();
-
-        if (t > 0.35f) {
-            Paint q = new Paint(Paint.ANTI_ALIAS_FLAG);
-            q.setStyle(Paint.Style.STROKE);
-            q.setStrokeWidth(3 * d);
-            q.setStrokeCap(Paint.Cap.ROUND);
-            q.setColor(0xFF4E7A46);
-            q.setAlpha((int) (255 * Math.max(0f, 1f - (t - 0.35f) / 0.65f)));
-            for (int i = 0; i < 5; i++) {
-                float side = (i % 2 == 0) ? -1 : 1;
-                float bx = cx + side * size * (0.16f + 0.06f * i);
-                float by = baseY - size * (0.10f + 0.18f * (t - 0.35f) + 0.04f * i);
-                c.drawLine(bx, by, bx + side * size * 0.05f, by - size * 0.035f, q);
-            }
-        }
-    }
-
-    /** Лопата входит в землю и выгребает засохшее растение. */
-    private void drawShovelDig(Canvas c, float cx, float baseY, float size) {
-        float t = digAnim;
-        float px = cx + size * 0.30f;
-        float py = baseY - size * (0.34f - 0.30f * t);
-        c.save();
-        c.rotate(-30f + 55f * t, px, py);
-        ToolIcon.draw(c, ToolIcon.SHOVEL, px, py, size * 0.42f);
-        c.restore();
-    }
-
     // ---------------- сорняки и засохший цветок ----------------
 
     /** Засохший цветок: поникший стебель и опавшие листья. */
@@ -606,8 +586,9 @@ public class GardenView extends View {
         }
     }
 
-    /** Сорняки: пучки жёстких травинок по сторонам от цветка. */
-    private void drawWeeds(Canvas c, float cx, float baseY, float size, int count, float time) {
+    /** Сорняки: пучки жёстких травинок по сторонам от цветка. hide — срезанный. */
+    private void drawWeeds(Canvas c, float cx, float baseY, float size, int count,
+                           float time, int hide) {
         Paint q = new Paint(Paint.ANTI_ALIAS_FLAG);
         q.setStyle(Paint.Style.STROKE);
         q.setStrokeCap(Paint.Cap.ROUND);
@@ -615,6 +596,7 @@ public class GardenView extends View {
         q.setColor(0xFF4E7A46);
 
         for (int i = 0; i < count; i++) {
+            if (i == hide) continue;
             float side = (i % 2 == 0) ? -1 : 1;
             float bx = cx + side * size * (0.26f + 0.10f * (i / 2));
             float h = size * (0.24f + 0.06f * i);
@@ -633,6 +615,112 @@ public class GardenView extends View {
             c.drawCircle(bx + sway * 2f, baseY - h - 2 * d, 3 * d, q);
             q.setStyle(Paint.Style.STROKE);
             q.setColor(0xFF4E7A46);
+        }
+    }
+
+    // ---------------- инструменты в действии ----------------
+
+    /** Удар тяпкой: лезвие входит в землю у сорняка, травинки разлетаются. */
+    private void drawHoeStrike(Canvas c, float cx, float baseY, float size) {
+        float t = cutAnim;
+        float groundY = baseY - size * 0.02f;
+        // срезаем последний сорняк — он на стороне (count-1)%2
+        float weedX = cx + cutSide * size * 0.30f;
+
+        // фаза удара и короткий отскок после
+        float strike;
+        if (t < 0.55f) strike = (float) Math.pow(t / 0.55f, 1.6f);          // разгон вниз
+        else strike = 1f - 0.22f * (float) Math.sin((t - 0.55f) / 0.45f * Math.PI); // отскок
+
+        float angle = -62f + 74f * strike;
+
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setStrokeCap(Paint.Cap.ROUND);
+        p.setStrokeJoin(Paint.Join.ROUND);
+
+        c.save();
+        c.translate(weedX, groundY);
+        // для левого сорняка зеркалим саму картинку, а не угол:
+        // иначе черенок разворачивался вниз и тяпка выглядела перевёрнутой
+        if (cutSide < 0) c.scale(-1f, 1f);
+        c.rotate(angle);
+
+        // черенок уходит вверх-вправо от лезвия
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(size * 0.055f);
+        p.setColor(0xFFA6743F);
+        c.drawLine(size * 0.04f, -size * 0.02f, size * 0.46f, -size * 0.34f, p);
+        p.setStrokeWidth(size * 0.018f);
+        p.setColor(0x55FFFFFF);
+        c.drawLine(size * 0.08f, -size * 0.05f, size * 0.43f, -size * 0.32f, p);
+
+        // лезвие-лопатка
+        android.graphics.Path blade = new android.graphics.Path();
+        blade.moveTo(-size * 0.10f, -size * 0.02f);
+        blade.lineTo(size * 0.10f, -size * 0.10f);
+        blade.lineTo(size * 0.16f, size * 0.03f);
+        blade.lineTo(-size * 0.04f, size * 0.09f);
+        blade.close();
+        p.setStyle(Paint.Style.FILL);
+        p.setColor(0xFFC7D2DA);
+        c.drawPath(blade, p);
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(size * 0.016f);
+        p.setColor(0xFF7E8C97);
+        c.drawPath(blade, p);
+        c.restore();
+
+        // трава, улетающая от удара
+        if (t > 0.5f) {
+            float k = (t - 0.5f) / 0.5f;
+            Paint g = new Paint(Paint.ANTI_ALIAS_FLAG);
+            g.setStyle(Paint.Style.STROKE);
+            g.setStrokeWidth(3 * d);
+            g.setStrokeCap(Paint.Cap.ROUND);
+            g.setColor(0xFF4E7A46);
+            g.setAlpha((int) (255 * Math.max(0f, 1f - k * 1.1f)));
+            for (int i = 0; i < 7; i++) {
+                float dir = (i - 3) / 3f;
+                float dx = dir * size * 0.30f * k;
+                float dy = -(size * 0.34f * k - size * 0.55f * k * k) - size * 0.04f * i;
+                float bx = weedX + dx, by = groundY + dy;
+                c.drawLine(bx, by, bx + dir * size * 0.03f, by - size * 0.05f, g);
+            }
+        }
+    }
+
+    /** Лопата: входит в землю, выгребает растение, земля летит комьями. */
+    private void drawShovelDig(Canvas c, float cx, float baseY, float size) {
+        float t = digAnim;
+        // фазы: 0..0.35 вход, 0.35..0.72 выгребание, 0.72..1 уход
+        float enter = Math.min(1f, t / 0.35f);
+        float scoop = t < 0.35f ? 0f : Math.min(1f, (t - 0.35f) / 0.37f);
+        float leave = t < 0.72f ? 0f : (t - 0.72f) / 0.28f;
+
+        float px = cx + size * (0.34f - 0.16f * scoop + 0.10f * leave);
+        float py = baseY - size * (0.02f + 0.30f * enter)
+                - size * 0.16f * scoop + size * 0.5f * leave;
+        float angle = -12f - 26f * enter + 62f * scoop + 30f * leave;
+
+        c.save();
+        c.translate(px, py);
+        c.rotate(angle);
+        ToolIcon.drawShovel(c, 0, 0, size * 0.52f);
+        c.restore();
+
+        // земля, вылетающая при выгребании
+        if (scoop > 0.05f && leave < 0.6f) {
+            float k = scoop;
+            Paint g = new Paint(Paint.ANTI_ALIAS_FLAG);
+            g.setStyle(Paint.Style.FILL);
+            for (int i = 0; i < 9; i++) {
+                float dir = (i - 4) / 4f;
+                float dx = dir * size * 0.34f * k;
+                float dy = -(size * 0.40f * k - size * 0.62f * k * k) - size * 0.03f * (i % 3);
+                g.setColor(i % 2 == 0 ? 0xFF6B4E32 : 0xFF8A6B4A);
+                g.setAlpha((int) (255 * Math.max(0f, 1f - k)));
+                c.drawCircle(cx + dx, baseY + dy, (2.2f + 1.4f * (i % 3)) * d, g);
+            }
         }
     }
 }
