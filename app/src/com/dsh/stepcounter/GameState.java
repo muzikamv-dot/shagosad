@@ -13,6 +13,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 
@@ -51,6 +52,19 @@ public class GameState {
     public int q1Target = 3000, q1Done = 0, q1Claimed = 0;
     public int q2Target = 2,    q2Done = 0, q2Claimed = 0;
     public int q3Done = 0,      q3Claimed = 0;
+
+    // ---------------- сорняки, увядание, инструменты ----------------
+    /** Сколько раз подряд не выполнялась норма. */
+    public int neglect = 0;
+    /** Сорняков на цветке: каждый требует одной тяпки. */
+    public int weeds = 0;
+    /** Цветок засох: ни полить, ни собрать, нужна лопата. */
+    public boolean withered = false;
+    /** Инвентарь: тяпки и лопаты. */
+    public int hoes = 0;
+    public int shovels = 0;
+    /** Последний день, за который проверяли норму. */
+    public String checkDay = "";
 
     public String nick = "";
     public int avatarStyle = 0;
@@ -123,6 +137,12 @@ public class GameState {
             g.water = o.optInt("water", 0);
             g.points = o.optInt("points", 0);
             g.earned = o.optInt("earned", -1);
+            g.neglect = o.optInt("neglect", 0);
+            g.weeds = o.optInt("weeds", 0);
+            g.withered = o.optBoolean("withered", false);
+            g.hoes = o.optInt("hoes", 0);
+            g.shovels = o.optInt("shovels", 0);
+            g.checkDay = o.optString("checkDay", "");
             g.goal = o.optInt("goal", 10000);
             g.streak = o.optInt("streak", 0);
             g.bestStreak = o.optInt("bestStreak", 0);
@@ -261,6 +281,12 @@ public class GameState {
         avatarPalette = 0;
         nick = "";
         created = "";
+        neglect = 0;
+        weeds = 0;
+        withered = false;
+        hoes = 0;
+        shovels = 0;
+        checkDay = "";
     }
 
     /** Ник при первом запуске: «Садовник #2841». */
@@ -281,8 +307,7 @@ public class GameState {
         return Math.max(1, d + 1);
     }
 
-    /** Купить окантовку за очки. Дорогие рамки ещё и требуют уровня. */
-    public boolean buyFrame(int id) {
+    /** Купить окантовку за очки. Дорогие рамки ещё и требуют уровня. */    public boolean buyFrame(int id) {
         if (id <= 0 || id >= Shop.FRAME_PRICES.length) return false;
         if (ownedFrames.contains(id)) return false;
         if (level() < Shop.FRAME_LEVEL[id]) return false;
@@ -372,6 +397,12 @@ public class GameState {
             o.put("water", water);
             o.put("points", points);
             o.put("earned", earned);
+            o.put("neglect", neglect);
+            o.put("weeds", weeds);
+            o.put("withered", withered);
+            o.put("hoes", hoes);
+            o.put("shovels", shovels);
+            o.put("checkDay", checkDay);
             o.put("goal", goal);
             o.put("streak", streak);
             o.put("bestStreak", bestStreak);
@@ -522,6 +553,122 @@ public class GameState {
         return Math.max(0, cost - waterProgress);
     }
 
+    // ---------------- сорняки, увядание, инструменты ----------------
+
+    /** Цена инструментов: тяпка ≈ 2 дня нормы, лопата ≈ 3 дня (по 300 очков в день). */
+    public static final int HOE_PRICE = 600;
+    public static final int SHOVEL_PRICE = 900;
+    /** С какого пропущенного дня подряд цветок засыхает. */
+    static final int WITHER_AFTER = 3;
+    /** После стольких дней отсутствия лопата выдаётся бесплатно, чтобы не запирать. */
+    static final int FORGIVE_AFTER = 7;
+
+    /** Сорняки и засыхание блокируют и полив, и сбор. */
+    public boolean plotBlocked() { return withered || weeds > 0; }
+
+    /** Срезать один сорняк тяпкой. */
+    public boolean cutWeed() {
+        if (weeds <= 0 || hoes <= 0) return false;
+        hoes--;
+        weeds--;
+        if (weeds == 0) neglect = 0;
+        return true;
+    }
+
+    /** Перекопать засохший цветок лопатой: тот же вид начинает расти из семени. */
+    public boolean digUp() {
+        if (!withered || shovels <= 0) return false;
+        shovels--;
+        withered = false;
+        weeds = 0;
+        neglect = 0;
+        stage[0] = 0;
+        return true;
+    }
+
+    public boolean buyHoe() {
+        if (points < HOE_PRICE) return false;
+        points -= HOE_PRICE;
+        hoes++;
+        return true;
+    }
+
+    public boolean buyShovel() {
+        if (points < SHOVEL_PRICE) return false;
+        points -= SHOVEL_PRICE;
+        shovels++;
+        return true;
+    }
+
+    /** Сдвинуть день на delta: "2026-10-26" + 1 = "2026-10-27". */
+    static String shiftDay(String day, int delta) {
+        try {
+            SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+            Date d = f.parse(day);
+            Calendar c = Calendar.getInstance();
+            if (d != null) c.setTime(d);
+            c.add(Calendar.DAY_OF_YEAR, delta);
+            return Steps.dayOf(c.getTimeInMillis());
+        } catch (Exception e) {
+            return day;
+        }
+    }
+
+    /**
+     * Проверить прошедшие дни. Норма выполнена — серия пропусков обнуляется;
+     * нет — появляются сорняки (по одному на день, максимум два), а с третьего
+     * дня подряд цветок засыхает. Возвращает true, если что-то изменилось.
+     */
+    public boolean checkMissedDays(Context ctx) {
+        String today = Steps.today();
+        if (checkDay.isEmpty()) {          // новое сохранение: прошлое не судим
+            checkDay = shiftDay(today, -1);
+            return false;
+        }
+        if (checkDay.equals(today)) return false;
+
+        LinkedHashMap<String, Integer> days = Steps.dailySteps(ctx);
+        boolean changed = false;
+        String d = shiftDay(checkDay, 1);
+        for (int guard = 0; guard < 400 && !d.equals(today); guard++) {
+            Integer v = days.get(d);
+            int steps = v == null ? 0 : v;
+            if (steps >= goal) {
+                if (neglect != 0) { neglect = 0; changed = true; }
+            } else {
+                neglect++;
+                changed = true;
+                if (!withered) {
+                    if (neglect >= WITHER_AFTER) {
+                        withered = true;
+                        weeds = 0;
+                        stage[0] = 0;      // цветок осыпался
+                    } else {
+                        weeds = Math.min(2, neglect);
+                    }
+                }
+            }
+            d = shiftDay(d, 1);
+        }
+        checkDay = shiftDay(today, -1);
+
+        // прощение: вернулся после долгой паузы — лопата бесплатно
+        if (withered && shovels == 0 && neglect >= FORGIVE_AFTER) {
+            shovels = 1;
+            changed = true;
+        }
+        return changed;
+    }
+
+    /** Тест-инструмент: сымитировать пропущенный день. */
+    public void simulateMiss() {
+        neglect++;
+        if (!withered) {
+            if (neglect >= WITHER_AFTER) { withered = true; weeds = 0; stage[0] = 0; }
+            else weeds = Math.min(2, neglect);
+        }
+    }
+
     /**
      * Забрать выполненные задания: три дневных и недельное.
      * Суммы совпадают с тем, что написано на экране заданий.
@@ -538,6 +685,7 @@ public class GameState {
     /** Полить грядку. Возвращает true, если получилось. */
     /** Собрать выросший цветок в букет и посадить следующий. */
     public void collect() {
+        if (plotBlocked()) return;         // сначала прополоть или перекопать
         int sp = species[0];
         if (!bloomed.contains(sp)) bloomed.add(sp);
         earn(100);
@@ -570,6 +718,7 @@ public class GameState {
 
     public boolean waterPlot(int index, String today) {
         if (index < 0 || index >= PLOTS) return false;
+        if (plotBlocked()) return false;   // сорняки или засохший цветок
         if (water <= 0) return false;
         if (stage[index] >= STAGES) return false;
 

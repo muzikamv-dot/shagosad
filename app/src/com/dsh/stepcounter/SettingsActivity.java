@@ -349,6 +349,30 @@ public class SettingsActivity extends Activity {
         });
         testBox.addView(again);
 
+        // для проверки сорняков и увядания без ожидания дней
+        Button skipDay = row("Смоделировать пропуск дня (тест)");
+        skipDay.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                game.simulateMiss();
+                game.save(SettingsActivity.this);
+                String msg = game.withered ? "Цветок засох" : "Сорняков: " + game.weeds;
+                Toast.makeText(SettingsActivity.this, msg, Toast.LENGTH_SHORT).show();
+            }
+        });
+        testBox.addView(skipDay);
+
+        // проверка магазина и инструментов без недели ходьбы
+        Button addPoints = row("Начислить 1000 очков (тест)");
+        addPoints.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                game.earn(1000);
+                game.save(SettingsActivity.this);
+                Toast.makeText(SettingsActivity.this,
+                        "Очков теперь: " + game.points, Toast.LENGTH_SHORT).show();
+            }
+        });
+        testBox.addView(addPoints);
+
         // для проверки самого сброса: подтверждение словом СБРОС мешает
         // автоматическим прогонам и клавиатурам без кириллицы
         Button hardReset = row("Сброс прогресса (тест, без подтверждения)");

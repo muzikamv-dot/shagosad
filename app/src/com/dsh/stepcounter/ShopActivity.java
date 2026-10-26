@@ -123,7 +123,9 @@ public class ShopActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         root.addView(scroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        selectTab(0);
+        // можно открыть сразу на нужной вкладке: shop.putExtra("tab", 1)
+        int start = getIntent() == null ? 0 : getIntent().getIntExtra("tab", 0);
+        selectTab(Math.max(0, Math.min(TAB_NAMES.length - 1, start)));
         return root;
     }
 
@@ -249,11 +251,80 @@ public class ShopActivity extends Activity {
     // ---------------- инструменты и семена (пока в разработке) ----------------
 
     private void fillTools() {
-        list.addView(noteCard("Скоро в магазине",
-                "Инструменты понадобятся, если пропустить день. Пока их нельзя купить: "
-                        + "сначала нужно добавить сорняки и увядание в сам сад."));
-        list.addView(soonCard("Тяпка", "срезает сорняки после пропущенного дня"));
-        list.addView(soonCard("Лопата", "перекапывает землю, если цветок засох"));
+        list.addView(noteCard("Для чего это",
+                "Тяпка срезает сорняки: они появляются, если не выполнить норму шагов. "
+                        + "Лопата перекапывает землю, если цветок засох после трёх пропусков подряд. "
+                        + "Инструменты расходуются по одному за раз."));
+        list.addView(toolRow("Тяпка", GameState.HOE_PRICE, game.hoes, true));
+        list.addView(toolRow("Лопата", GameState.SHOVEL_PRICE, game.shovels, false));
+    }
+
+    /** Строка инструмента с покупкой. */
+    private View toolRow(String name, int price, int owned, final boolean hoe) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(16), dp(12), dp(16), dp(12));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(20));
+        bg.setColor(Theme.SURFACE);
+        bg.setStroke(dp(1), Theme.CARD_STROKE);
+        row.setBackground(bg);
+
+        ToolIcon.View icon = new ToolIcon.View(this, hoe ? ToolIcon.HOE : ToolIcon.SHOVEL);
+        LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(dp(44), dp(44));
+        ip.rightMargin = dp(12);
+        row.addView(icon, ip);
+
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+
+        TextView t = new TextView(this);
+        t.setText(name);
+        t.setTextColor(Theme.TEXT);
+        t.setTextSize(13);
+        col.addView(t);
+
+        TextView d = new TextView(this);
+        d.setText(Shop.money(price) + " очков · у вас: " + owned);
+        d.setTextColor(Theme.MUTED);
+        d.setTextSize(10.5f);
+        d.setPadding(0, dp(3), 0, 0);
+        col.addView(d);
+
+        row.addView(col, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        Button action = new Button(this);
+        action.setAllCaps(false);
+        action.setTextSize(11);
+        action.setStateListAnimator(null);
+        boolean affordable = game.points >= price;
+        action.setText("купить");
+        action.setTextColor(affordable ? Theme.ON_ACCENT : Theme.FAINT);
+        GradientDrawable bd = new GradientDrawable();
+        bd.setCornerRadius(dp(14));
+        bd.setColor(affordable ? Theme.ACCENT : Theme.SURFACE_HI);
+        action.setBackground(bd);
+        action.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                boolean ok = hoe ? game.buyHoe() : game.buyShovel();
+                if (ok) {
+                    game.save(ShopActivity.this);
+                    Toast.makeText(ShopActivity.this, "Куплено", Toast.LENGTH_SHORT).show();
+                    fill();
+                } else {
+                    Toast.makeText(ShopActivity.this, "Не хватает очков", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+        row.addView(action, new LinearLayout.LayoutParams(dp(88), dp(38)));
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(8);
+        row.setLayoutParams(lp);
+        return row;
     }
 
     private void fillSeeds() {

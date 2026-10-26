@@ -67,7 +67,7 @@ public class MainActivity extends Activity {
     private TextView dBest, dAvg, dTotal, dDays, dFlowers, dSpecies;
     private Button goalButton;
     private LinearLayout medalRow;
-    private Button shopButton, herbButton;
+    private Button shopButton, herbButton, bagButton;
     private Bitmap avatarBitmap;
     private ScrollView achPage;
     private LinearLayout achList;
@@ -139,6 +139,8 @@ public class MainActivity extends Activity {
         if (quests != null) quests.setGame(game);
         resumed = true;
         loadAvatar();
+        // пропущенные дни проверяем при каждом возврате: сорняки и засыхание
+        if (game.checkMissedDays(this)) game.save(this);
         refreshAll();
         runSync();
         ui.removeCallbacks(ticker);
@@ -239,7 +241,41 @@ public class MainActivity extends Activity {
         garden.setListener(new GardenView.Listener() {
             @Override public void onTap() {
                 boolean collected = false;
-                if (game.stage[0] >= GameState.STAGES) {
+                if (game.withered) {
+                    // сначала перекопать: цветок засох, рост не идёт
+                    if (game.shovels <= 0) {
+                        openShopTools();
+                        return;
+                    }
+                    garden.digOut(new Runnable() {
+                        @Override public void run() {
+                            game.digUp();
+                            Haptics.tap(MainActivity.this);
+                            Toast.makeText(MainActivity.this,
+                                    "Земля перекопана — сажаем то же семя", Toast.LENGTH_SHORT).show();
+                            afterGardenAction();
+                        }
+                    });
+                    return;
+                } else if (game.weeds > 0) {
+                    // сорняки глушат цветок, пока их не срежут
+                    if (game.hoes <= 0) {
+                        openShopTools();
+                        return;
+                    }
+                    garden.cutWeeds(new Runnable() {
+                        @Override public void run() {
+                            game.cutWeed();
+                            Haptics.tap(MainActivity.this);
+                            Toast.makeText(MainActivity.this,
+                                    game.weeds > 0 ? "Срезан один сорняк, осталось " + game.weeds
+                                            : "Сорняки срезаны — можно поливать",
+                                    Toast.LENGTH_SHORT).show();
+                            afterGardenAction();
+                        }
+                    });
+                    return;
+                } else if (game.stage[0] >= GameState.STAGES) {
                     game.collect();
                     collected = true;
                     cardFlowActive = true;   // уведомление о достижении ждёт закрытия открытки
@@ -316,6 +352,23 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(70)));
 
         return root;
+    }
+
+    /** Открыть магазин сразу на вкладке «Инструменты». */
+    private void openShopTools() {
+        Intent i = new Intent(this, ShopActivity.class);
+        i.putExtra("tab", 1);
+        startActivity(i);
+    }
+
+    /** Сохранить состояние и обновить экраны после действия в саду. */
+    private void afterGardenAction() {
+        game.save(this);
+        if (garden != null) garden.setGame(game);
+        if (quests != null) quests.setGame(game);
+        refreshWaterCard();
+        refreshProfile();
+        checkAchievements();
     }
 
     private LinearLayout buildNav() {
@@ -873,8 +926,9 @@ public class MainActivity extends Activity {
                 startActivity(new Intent(MainActivity.this, ShopActivity.class));
             }
         });
+        // 10dp: при 8dp третья кнопка выходила на пиксель шире
         LinearLayout.LayoutParams bp1 = new LinearLayout.LayoutParams(0, dp(46), 1f);
-        bp1.rightMargin = dp(8);
+        bp1.rightMargin = dp(10);
         actions.addView(shopButton, bp1);
 
         herbButton = outlined("Коллекция");
@@ -883,7 +937,17 @@ public class MainActivity extends Activity {
                 startActivity(new Intent(MainActivity.this, CollectionActivity.class));
             }
         });
-        actions.addView(herbButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        LinearLayout.LayoutParams bp2 = new LinearLayout.LayoutParams(0, dp(46), 1f);
+        bp2.rightMargin = dp(10);
+        actions.addView(herbButton, bp2);
+
+        bagButton = outlined("Инвентарь");
+        bagButton.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, InventoryActivity.class));
+            }
+        });
+        actions.addView(bagButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
         root.addView(actions, ap);
 
         medalRow = new LinearLayout(this);
@@ -1284,8 +1348,9 @@ public class MainActivity extends Activity {
         for (Achievements.Ach a : Achievements.ALL) if (game.unlocked.contains(a.id)) opened++;
         profAch.setText("Достижения: " + opened + " из " + Achievements.ALL.size());
         if (goalButton != null) goalButton.setText("Норма шагов в день: " + fmt(game.goal));
-        if (shopButton != null) shopButton.setText("Магазин · " + game.points);
-        if (herbButton != null) herbButton.setText("Коллекция · " + game.bloomed.size());
+        if (shopButton != null) shopButton.setText("Магазин");
+        if (herbButton != null) herbButton.setText("Коллекция");
+        if (bagButton != null) bagButton.setText("Инвентарь");
         rebuildMedals();
 
         int days = Math.max(1, game.daysInGarden());

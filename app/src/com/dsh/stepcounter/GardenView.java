@@ -60,9 +60,61 @@ public class GardenView extends View {
     private final java.util.ArrayList<Spark> sparks = new java.util.ArrayList<>();
     private android.animation.ValueAnimator sparkAnim;
 
+    // ---- анимации инструментов ----
+    private float cutAnim = -1f;   // 0..1 — тяпка срезает сорняк
+    private float digAnim = -1f;   // 0..1 — лопата выкапывает засохший цветок
+    private Runnable cutDone, digDone;
+
+    /** Анимация: тяпка срезает сорняк, потом действие применяется. */
+    public void cutWeeds(final Runnable done) {
+        if (cutAnim >= 0f) return;
+        cutDone = done;
+        android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(0f, 1f);
+        a.setDuration(430L);
+        a.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator v) {
+                cutAnim = (Float) v.getAnimatedValue();
+                invalidate();
+            }
+        });
+        a.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator v) {
+                cutAnim = -1f;
+                invalidate();
+                Runnable r = cutDone;
+                cutDone = null;
+                if (r != null) r.run();
+            }
+        });
+        a.start();
+    }
+
+    /** Анимация: лопата выкапывает засохший цветок, потом действие применяется. */
+    public void digOut(final Runnable done) {
+        if (digAnim >= 0f) return;
+        digDone = done;
+        android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(0f, 1f);
+        a.setDuration(700L);
+        a.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator v) {
+                digAnim = (Float) v.getAnimatedValue();
+                invalidate();
+            }
+        });
+        a.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator v) {
+                digAnim = -1f;
+                invalidate();
+                Runnable r = digDone;
+                digDone = null;
+                if (r != null) r.run();
+            }
+        });
+        a.start();
+    }
+
     /** Растение пружинисто встряхивается в ответ на полив. */
-    public void pulse() {
-        if (pulseAnim != null) pulseAnim.cancel();
+    public void pulse() {        if (pulseAnim != null) pulseAnim.cancel();
         pulseAnim = android.animation.ValueAnimator.ofFloat(1f, 1.10f, 1f);
         pulseAnim.setDuration(460L);
         pulseAnim.setInterpolator(new android.view.animation.OvershootInterpolator(2.4f));
@@ -337,11 +389,27 @@ public class GardenView extends View {
         // по золотому углу и ветер. Спрайты остаются только для гербария и открыток.
         float time = (System.currentTimeMillis() % 600000L) / 1000f;
         float wind = (float) (Math.sin(time * 0.85f) * 0.62f + Math.sin(time * 2.1f + 1.3f) * 0.38f);
+        // если работает лопата — растение уходит в землю и тает
+        float sink = digAnim >= 0f ? digAnim * fsize * 0.34f : 0f;
+        int plantAlpha = digAnim >= 0f ? (int) (255 * (1f - digAnim)) : 255;
+
         c.save();
         c.scale(pulse, pulse, w / 2f, plantBottom);
-        KawaiiPlant.draw(c, species, stage, w / 2f, plantBottom, fsize, time, wind);
+        c.translate(0, sink);
+        if (game.withered) {
+            drawWithered(c, w / 2f, plantBottom, fsize, time, plantAlpha);
+        } else {
+            KawaiiPlant.draw(c, species, stage, w / 2f, plantBottom, fsize, time, wind);
+        }
         c.restore();
         p.setAlpha(255);
+
+        // сорняки растут у основания, пока их не срежут тяпкой
+        if (!game.withered && game.weeds > 0) {
+            drawWeeds(c, w / 2f, plantBottom, fsize, game.weeds, time);
+        }
+        if (cutAnim >= 0f) drawHoeSwing(c, w / 2f, plantBottom, fsize);
+        if (digAnim >= 0f) drawShovelDig(c, w / 2f, plantBottom, fsize);
 
         // стадии
         float dotsY = cardTop + 24 * d;
@@ -354,16 +422,40 @@ public class GardenView extends View {
         centered(c, stage + " / 10", w - pad - 18 * d, dotsY, 9.5f, Theme.MUTED, false);
 
         // подпись
-        centered(c, Species.FORM[Species.shape(species) % Species.FORM.length] + " · " + STAGE_NAMES[Math.min(10, stage)],
-                w / 2f, labelY, 11.5f, Theme.MUTED, false);
+        String caption;
+        if (game.withered) {
+            caption = "цветок засох · нужна лопата";
+        } else if (game.weeds > 0) {
+            caption = "сорняков: " + game.weeds + " · нужна тяпка";
+        } else {
+            caption = Species.FORM[Species.shape(species) % Species.FORM.length]
+                    + " · " + STAGE_NAMES[Math.min(10, stage)];
+        }
+        centered(c, caption, w / 2f, labelY, 11.5f,
+                game.plotBlocked() ? Theme.GOLD : Theme.MUTED, false);
 
         if (canActive) drawCan(c, w, plantBottom, System.currentTimeMillis());
 
         // кнопка-действие под карточкой
-        String action = stage >= GameState.STAGES
-                ? "Собрать букет"
-                : (game.water > 0 ? "Полить" : "Нужна вода · пройди " + Ui.steps(game.stepCost()));
-        boolean ready = stage >= GameState.STAGES || game.water > 0;
+        String action;
+        boolean ready;
+        if (game.withered) {
+            action = game.shovels > 0
+                    ? "Перекопать лопатой"
+                    : "Нужна лопата — посети магазин";
+            ready = game.shovels > 0;
+        } else if (game.weeds > 0) {
+            action = game.hoes > 0
+                    ? (game.weeds == 1 ? "Срезать сорняк тяпкой" : "Срезать сорняки: " + game.weeds)
+                    : "Нужна тяпка — посети магазин";
+            ready = game.hoes > 0;
+        } else if (stage >= GameState.STAGES) {
+            action = "Собрать букет";
+            ready = true;
+        } else {
+            action = game.water > 0 ? "Полить" : "Нужна вода · пройди " + Ui.steps(game.stepCost());
+            ready = game.water > 0;
+        }
         float btnTop = cardTop + cardH + 16 * d;
         float btnBottom = btnTop + 52 * d;
         buttonRect.set(pad + 8 * d, btnTop, w - pad - 8 * d, btnBottom);
@@ -436,5 +528,111 @@ public class GardenView extends View {
                 return true;
         }
         return super.onTouchEvent(e);
+    }
+
+    // ---------------- инструменты в действии ----------------
+
+    /** Взмах тяпкой по сорнякам: лезвие идёт по дуге, травинки летят. */
+    private void drawHoeSwing(Canvas c, float cx, float baseY, float size) {
+        float t = cutAnim;
+        float pivotY = baseY - size * 0.16f;
+        c.save();
+        c.rotate(-60f + 120f * t, cx, pivotY);
+        ToolIcon.draw(c, ToolIcon.HOE, cx + size * 0.30f, pivotY, size * 0.30f);
+        c.restore();
+
+        if (t > 0.35f) {
+            Paint q = new Paint(Paint.ANTI_ALIAS_FLAG);
+            q.setStyle(Paint.Style.STROKE);
+            q.setStrokeWidth(3 * d);
+            q.setStrokeCap(Paint.Cap.ROUND);
+            q.setColor(0xFF4E7A46);
+            q.setAlpha((int) (255 * Math.max(0f, 1f - (t - 0.35f) / 0.65f)));
+            for (int i = 0; i < 5; i++) {
+                float side = (i % 2 == 0) ? -1 : 1;
+                float bx = cx + side * size * (0.16f + 0.06f * i);
+                float by = baseY - size * (0.10f + 0.18f * (t - 0.35f) + 0.04f * i);
+                c.drawLine(bx, by, bx + side * size * 0.05f, by - size * 0.035f, q);
+            }
+        }
+    }
+
+    /** Лопата входит в землю и выгребает засохшее растение. */
+    private void drawShovelDig(Canvas c, float cx, float baseY, float size) {
+        float t = digAnim;
+        float px = cx + size * 0.30f;
+        float py = baseY - size * (0.34f - 0.30f * t);
+        c.save();
+        c.rotate(-30f + 55f * t, px, py);
+        ToolIcon.draw(c, ToolIcon.SHOVEL, px, py, size * 0.42f);
+        c.restore();
+    }
+
+    // ---------------- сорняки и засохший цветок ----------------
+
+    /** Засохший цветок: поникший стебель и опавшие листья. */
+    private void drawWithered(Canvas c, float cx, float baseY, float size, float time, int alpha) {
+        Paint q = new Paint(Paint.ANTI_ALIAS_FLAG);
+        q.setStrokeCap(Paint.Cap.ROUND);
+        q.setAlpha(alpha);
+
+        q.setStyle(Paint.Style.STROKE);
+        q.setStrokeWidth(6 * d);
+        q.setColor(0xFF8A6B4A);
+        float topX = cx + size * 0.08f;
+        float topY = baseY - size * 0.46f;
+        android.graphics.Path stem = new android.graphics.Path();
+        stem.moveTo(cx, baseY);
+        stem.cubicTo(cx - size * 0.04f, baseY - size * 0.20f,
+                topX + size * 0.10f, baseY - size * 0.30f, topX, topY);
+        c.drawPath(stem, q);
+
+        // поникшая головка
+        q.setStyle(Paint.Style.FILL);
+        q.setColor(0xFF6B5138);
+        c.drawCircle(topX, topY, size * 0.06f, q);
+
+        // опавшие листья у земли
+        q.setColor(0xFF7A5C3E);
+        for (int i = 0; i < 3; i++) {
+            float ly = baseY - size * (0.10f + i * 0.12f);
+            float dir = (i % 2 == 0) ? 1 : -1;
+            android.graphics.Path leaf = new android.graphics.Path();
+            leaf.moveTo(cx, ly);
+            leaf.quadTo(cx + dir * size * 0.14f, ly + size * 0.03f,
+                    cx + dir * size * 0.19f, ly + size * 0.14f);
+            leaf.quadTo(cx + dir * size * 0.07f, ly + size * 0.09f, cx, ly);
+            c.drawPath(leaf, q);
+        }
+    }
+
+    /** Сорняки: пучки жёстких травинок по сторонам от цветка. */
+    private void drawWeeds(Canvas c, float cx, float baseY, float size, int count, float time) {
+        Paint q = new Paint(Paint.ANTI_ALIAS_FLAG);
+        q.setStyle(Paint.Style.STROKE);
+        q.setStrokeCap(Paint.Cap.ROUND);
+        q.setStrokeWidth(3.5f * d);
+        q.setColor(0xFF4E7A46);
+
+        for (int i = 0; i < count; i++) {
+            float side = (i % 2 == 0) ? -1 : 1;
+            float bx = cx + side * size * (0.26f + 0.10f * (i / 2));
+            float h = size * (0.24f + 0.06f * i);
+            float sway = (float) Math.sin(time * 1.6f + i * 1.7f) * size * 0.02f;
+            for (int b = -1; b <= 1; b++) {
+                android.graphics.Path blade = new android.graphics.Path();
+                float x = bx + b * 5 * d;
+                blade.moveTo(x, baseY);
+                blade.quadTo(x + b * 6 * d + sway, baseY - h * 0.55f,
+                        x + b * 13 * d + sway * 2f, baseY - h);
+                c.drawPath(blade, q);
+            }
+            // мелкий жёлтый цветок сорняка
+            q.setStyle(Paint.Style.FILL);
+            q.setColor(0xFFD9C36A);
+            c.drawCircle(bx + sway * 2f, baseY - h - 2 * d, 3 * d, q);
+            q.setStyle(Paint.Style.STROKE);
+            q.setColor(0xFF4E7A46);
+        }
     }
 }

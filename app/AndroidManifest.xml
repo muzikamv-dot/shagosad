@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.dsh.stepcounter"
-    android:versionCode="81"
-    android:versionName="9.7">
+    android:versionCode="82"
+    android:versionName="9.8">
 
     <!-- доступ к счётчику шагов -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
@@ -67,6 +67,12 @@
             android:exported="false"
             android:screenOrientation="portrait"
             android:label="Коллекция" />
+
+        <activity
+            android:name=".InventoryActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:label="Инвентарь" />
 `n        <activity
             android:name=".GalleryActivity"
             android:exported="false"
