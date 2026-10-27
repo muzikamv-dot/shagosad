@@ -93,13 +93,12 @@ final class DayPhase {
 
     /** Итог сцены: ручная настройка или реальная погода из сети. */
     static int scene(Context ctx) {
+        // нет доступа к погоде — всегда ясно (решение владельца)
+        if (!Weather.hasData(ctx)) return WEATHER_CLEAR;
         int pref = weatherPref(ctx);
         if (pref != WEATHER_AUTO) return pref;
-        if (Weather.hasData(ctx)) {
-            return Weather.sceneWeather(Weather.code(ctx), Weather.cloud(ctx),
-                    Weather.snow(ctx), Weather.precip(ctx));
-        }
-        return WEATHER_CLEAR;
+        return Weather.sceneWeather(Weather.code(ctx), Weather.cloud(ctx),
+                Weather.snow(ctx), Weather.precip(ctx));
     }
 
     /** Облачность в процентах: реальная или из ручной настройки. */
@@ -167,12 +166,29 @@ final class DayPhase {
         float w = card.width(), h = card.height();
         if (w <= 0 || h <= 0) return;
 
-        long stamp = stamp(ctx);
-        float[] sun = SunMoon.sun(stamp, lat(ctx), lon(ctx));
-        float[] moon = SunMoon.moon(stamp, lat(ctx), lon(ctx));
-        float alt = sun[0];
-        float night = night(alt);
-        int cloud = cloudPercent(ctx);
+        long stamp;
+        float[] sun;
+        float[] moon;
+        int cloud;
+        float alt;
+        float night;
+
+        boolean testHour = Steps.prefs(ctx).getFloat(PREF_HOUR, -1f) >= 0f;
+        if (!Weather.hasData(ctx) && !testHour) {
+            // Доступа к погоде нет — по решению владельца сцена всегда полдень и ясно:
+            // солнце в зените юга, ни облаков, ни осадков, никакой ночи.
+            stamp = System.currentTimeMillis();
+            sun = new float[]{56f, 180f};
+            moon = new float[]{-60f, 0f};
+            cloud = 0;
+        } else {
+            stamp = stamp(ctx);
+            sun = SunMoon.sun(stamp, lat(ctx), lon(ctx));
+            moon = SunMoon.moon(stamp, lat(ctx), lon(ctx));
+            cloud = cloudPercent(ctx);
+        }
+        alt = sun[0];
+        night = night(alt);
 
         int top = skyTop(alt);
         int bottom = skyBottom(alt);
@@ -210,62 +226,70 @@ final class DayPhase {
             P.setAlpha(255);
         }
 
+        // насколько вообще видно светила: чем больше облаков, тем слабее,
+        // при сплошной облачности (100 %) — не видно совсем
+        float seeCelestial = (float) Math.max(0.0, 1.0 - Math.pow(cloud / 100.0, 1.5));
+
         // солнце на своём настоящем месте: азимут → по горизонтали, высота → по вертикали
-        if (sun[0] > -2f && cloud < 92) {
+        if (sun[0] > -2f && seeCelestial > 0.06f) {
             float sx = posX(card, sun[1]);
             float sy = posY(card, sun[0]);
-            float r = 13f * d;
-            int glow = (int) (0x66 - Math.min(0x40, cloud * 0.5f));
-            P.setShader(new RadialGradient(sx, sy, r * 5f,
+            // диск того же размера, что у луны: их угловые размеры почти равны
+            float r = 20f * d;
+            int glow = (int) (0x66 * seeCelestial);
+            P.setShader(new RadialGradient(sx, sy, r * 3.2f,
                     (Math.max(0, glow) << 24) | 0xFFE0A8, 0x00FFE0A8, Shader.TileMode.CLAMP));
-            c.drawCircle(sx, sy, r * 5f, P);
+            c.drawCircle(sx, sy, r * 3.2f, P);
             P.setShader(null);
             P.setColor(0xFFFFE9C4);
-            P.setAlpha((int) (240 - Math.min(150, cloud * 1.5f)));
+            P.setAlpha((int) (240 * seeCelestial));
             c.drawCircle(sx, sy, r, P);
             P.setAlpha(255);
-        } else if (moon[0] > -2f && night > 0.12f) {
+        } else if (moon[0] > -2f && night > 0.12f && seeCelestial > 0.06f) {
             float mx = posX(card, moon[1]);
             float my = posY(card, moon[0]);
-            float r = 10f * d;
+            float r = 20f * d;                       // луна вдвое крупнее
             float illum = SunMoon.moonIllum(stamp);
             float phase = SunMoon.moonPhase(stamp);
+            int alpha = (int) (255 * night * seeCelestial);
 
-            P.setShader(new RadialGradient(mx, my, r * 4f,
-                    0x44DCE6FF, 0x00DCE6FF, Shader.TileMode.CLAMP));
-            c.drawCircle(mx, my, r * 4f, P);
+            P.setShader(new RadialGradient(mx, my, r * 3.4f,
+                    ((int) (0x44 * seeCelestial) << 24) | 0xDCE6FF,
+                    0x00DCE6FF, Shader.TileMode.CLAMP));
+            c.drawCircle(mx, my, r * 3.4f, P);
             P.setShader(null);
-            if (illum > 0.04f) {
-                P.setColor(0xFFF2F5FF);
-                P.setAlpha((int) (240 * night));
-                c.drawCircle(mx, my, r, P);
-                // тень: смещённый круг цвета неба — серп нужной фазы
-                float dx = (phase < 0.5f ? -1f : 1f) * 2f * r * illum;
-                P.setColor(skyTop(alt));
-                P.setAlpha(250);
-                c.drawCircle(mx + dx, my, r * 1.02f, P);
-                P.setAlpha(255);
+
+            // только освещённая часть: никакого чёрного круга рядом с луной
+            if (illum > 0.02f) {
+                drawPhaseDisc(c, mx, my, r, illum, phase, 0xFFF2F5FF, alpha);
             }
         }
 
-        // облака: количество и плотность — из реальной облачности
-        int clouds = cloud >= 85 ? 6 : cloud >= 50 ? 4 : cloud >= 20 ? 2 : 1;
+        // облака прямо из процента облачности: 0 % — чистое небо, 100 % — сплошная пелена
+        int clouds = cloud < 5 ? 0 : cloud < 25 ? 1 : cloud < 50 ? 2 : cloud < 75 ? 4
+                : cloud < 90 ? 6 : 8;
+        int cloudAlpha = (int) (10 + cloud * 0.82f);
+        if (cloud >= 88) {
+            // сплошная облачность: ровная пелена сверху, чтобы «хмуро» читалось сразу.
+            // Слабая, чтобы не забивать точки стадий и подписи в карточке.
+            int band = (int) Math.min(110, (cloud - 85) * 7f);
+            P.setShader(new LinearGradient(card.left, card.top, card.left, card.top + h * 0.42f,
+                    (band << 24) | 0xE8EEF5, 0x00E8EEF5, Shader.TileMode.CLAMP));
+            c.drawRect(card.left, card.top, card.right, card.top + h * 0.42f, P);
+            P.setShader(null);
+        }
         Random cr = new Random(daySeed() + 77);
-        int cloudAlpha = (int) (18 + cloud * 0.72f);
         for (int i = 0; i < clouds; i++) {
             float baseX = cr.nextFloat();
             float by = card.top + h * (0.08f + cr.nextFloat() * 0.34f);
             float cw = w * (0.26f + cr.nextFloat() * 0.20f);
             float speed = 4f + cr.nextFloat() * 6f;
             float x = card.left - cw + (baseX * (w + cw * 2) + timeSec * speed) % (w + cw * 2);
-            // одно мягкое пятно на облако: радиальный градиент вместо трёх резких овалов
+            // каждое облако — два мягких пятна, у каждого свой радиальный градиент
+            // от центра: иначе видны круглые кромки и облако похоже на пузыри
             int a = Math.max(0, Math.min(255, cloudAlpha));
-            P.setShader(new RadialGradient(x + cw * 0.5f, by + cw * 0.13f, cw * 0.58f,
-                    (a << 24) | 0xFFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
-            c.drawOval(x, by, x + cw, by + cw * 0.26f, P);
-            c.drawOval(x + cw * 0.16f, by - cw * 0.11f, x + cw * 0.74f, by + cw * 0.20f, P);
-            c.drawOval(x + cw * 0.50f, by - cw * 0.04f, x + cw * 0.98f, by + cw * 0.22f, P);
-            P.setShader(null);
+            softCloud(c, x, by, x + cw, by + cw * 0.26f, a);
+            softCloud(c, x + cw * 0.30f, by - cw * 0.12f, x + cw * 0.92f, by + cw * 0.20f, a);
         }
         P.setAlpha(255);
 
@@ -341,8 +365,52 @@ final class DayPhase {
         c.restore();
     }
 
-    /** Азимут → положение по горизонтали: восток слева, юг в центре, запад справа. */
-    private static float posX(RectF card, float az) {
+    /**
+     * Луна в фазе: заливается только освещённая часть, тёмная сторона просто
+     * прозрачна — поэтому рядом с луной не видно чёрного круга.
+     *
+     * Освещённая часть ограничена дугой по краю диска (со стороны света) и
+     * полуэллипсом-терминатором: при растущей луне он выгнут в тёмную сторону
+     * (горб), при молодой — в светлую (серп).
+     */
+    private static void drawPhaseDisc(Canvas c, float cx, float cy, float r,
+                                      float illum, float phase, int color, int alpha) {
+        float b = r * Math.abs(1f - 2f * illum);
+        RectF outer = new RectF(cx - r, cy - r, cx + r, cy + r);
+        RectF inner = new RectF(cx - b, cy - r, cx + b, cy + r);
+        boolean waxing = phase < 0.5f;
+
+        Path p = new Path();
+        p.moveTo(cx, cy - r);
+        // дуга по освещённому краю: справа при растущей, слева при убывающей
+        p.arcTo(outer, -90, waxing ? 180 : -180, false);
+        // терминатор — полуэллипс от нижней точки к верхней
+        if (illum >= 0.5f) {
+            p.arcTo(inner, 90, waxing ? 180 : -180, false);   // горб в тёмную сторону
+        } else {
+            p.arcTo(inner, 90, waxing ? -180 : 180, false);   // серп: выгиб в светлую
+        }
+        p.close();
+
+        P.setStyle(Paint.Style.FILL);
+        P.setColor(color);
+        P.setAlpha(alpha);
+        c.drawPath(p, P);
+        P.setAlpha(255);
+    }
+
+    /** Мягкое облачное пятно: радиальный градиент от центра овала, без резкой кромки. */
+    private static void softCloud(Canvas c, float l, float t, float r, float b, int alpha) {
+        if (alpha <= 0) return;
+        float cx = (l + r) / 2f, cy = (t + b) / 2f;
+        float rad = Math.max(l < r ? (r - l) / 2f : 1f, 1f);
+        P.setShader(new RadialGradient(cx, cy, rad,
+                (alpha << 24) | 0xFFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
+        c.drawOval(l, t, r, b, P);
+        P.setShader(null);
+    }
+
+    /** Азимут → положение по горизонтали: восток слева, юг в центре, запад справа. */    private static float posX(RectF card, float az) {
         float k = (az - 180f) / 90f;
         k = Math.max(-1.15f, Math.min(1.15f, k));
         return card.centerX() + k * card.width() * 0.40f;

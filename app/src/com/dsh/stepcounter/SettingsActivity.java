@@ -42,10 +42,14 @@ import java.io.OutputStream;
 public class SettingsActivity extends Activity {
 
     private static final int REQ_PERMS = 300;
+    /** Почта разработчика для обратной связи. */
+    static final String DEV_EMAIL = "muzikamv@gmail.com";
 
     private GameState game;
     private TextView diagView;
     private Button weatherButton;
+    private LinearLayout testBox;
+    private ScrollView scroll;
     private void chooseTheme() {
         new AlertDialog.Builder(this)
                 .setTitle("Тема оформления")
@@ -260,7 +264,7 @@ public class SettingsActivity extends Activity {
         root.addView(head);
         root.addView(Ui.divider(this));
 
-        ScrollView scroll = new ScrollView(this);
+        scroll = new ScrollView(this);
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
 
@@ -332,7 +336,8 @@ public class SettingsActivity extends Activity {
         box.addView(loadCopy);
 
         // ТЕСТ (скрыт, открывается 7 тапами по версии)
-        final LinearLayout testBox = new LinearLayout(this);
+        final LinearLayout testBoxRef = new LinearLayout(this);
+        testBox = testBoxRef;
         testBox.setOrientation(LinearLayout.VERTICAL);
         testBox.setVisibility(View.GONE);
         testBox.addView(section("ТЕСТ И ДИАГНОСТИКА"));
@@ -399,6 +404,18 @@ public class SettingsActivity extends Activity {
         });
         testBox.addView(weatherStatus);
 
+        // посмотреть награждение ещё раз, не зарабатывая медаль
+        Button achAgain = row("Показать награды заново (тест)");
+        achAgain.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                getSharedPreferences(Steps.PREFS, MODE_PRIVATE)
+                        .edit().remove(Achievements.PREF_SHOWN).apply();
+                Toast.makeText(SettingsActivity.this,
+                        "Награды покажутся при следующем запуске", Toast.LENGTH_LONG).show();
+            }
+        });
+        testBox.addView(achAgain);
+
         // Обучение показывается один раз; чтобы посмотреть его снова или проверить
         // галочку «больше не показывать», сбрасываем флаг и открываем экран
         Button again = row("Показать обучение заново");
@@ -452,10 +469,29 @@ public class SettingsActivity extends Activity {
         diagView.setTextIsSelectable(true);
         diagView.setPadding(dp(4), dp(4), dp(4), dp(8));
         testBox.addView(diagView);
-        box.addView(testBox);
 
         // О ПРИЛОЖЕНИИ
         box.addView(section("О ПРИЛОЖЕНИИ"));
+
+        // Открыть меню разработчика обычной кнопкой: семь тапов по версии остались,
+        // но это уже не единственный вход — владелец попросил нормальную кнопку.
+        final Button devMenu = row("Меню разработчика: открыть");
+        devMenu.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                boolean open = testBox.getVisibility() != View.VISIBLE;
+                testBox.setVisibility(open ? View.VISIBLE : View.GONE);
+                devMenu.setText(open ? "Меню разработчика: скрыть"
+                        : "Меню разработчика: открыть");
+                if (open) {
+                    scroll.post(new Runnable() {
+                        @Override public void run() {
+                            scroll.smoothScrollTo(0, testBox.getTop());
+                        }
+                    });
+                }
+            }
+        });
+        box.addView(devMenu);
 
         Button changelog = row("История изменений");
         changelog.setOnClickListener(new View.OnClickListener() {
@@ -464,6 +500,14 @@ public class SettingsActivity extends Activity {
             }
         });
         box.addView(changelog);
+
+        // Связь с разработчиком: открываем почтовое приложение с готовым письмом,
+        // а если его нет — показываем адрес и копируем в буфер.
+        Button contact = row("Связаться с разработчиком");
+        contact.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { contactDeveloper(); }
+        });
+        box.addView(contact);
 
         TextView version = new TextView(this);
         version.setText("ШагоСад · версия " + versionName() + " (" + versionCode() + ")");
@@ -487,6 +531,7 @@ public class SettingsActivity extends Activity {
             }
         });
         box.addView(version);
+        box.addView(testBox);
 
         scroll.addView(box, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -730,6 +775,33 @@ public class SettingsActivity extends Activity {
                 .getFloat(DayPhase.PREF_HOUR, -1f);
         if (h < 0f) return "Время суток в саду (тест): авто";
         return "Время суток в саду (тест): " + Math.round(h) + ":00";
+    }
+
+    /** Почта разработчика: письмо с уже заполненной темой, иначе — адрес и копирование. */
+    private void contactDeveloper() {
+        String subject = "ШагоСад " + versionName() + " (" + versionCode() + ")";
+        Intent mail = new Intent(Intent.ACTION_SENDTO,
+                Uri.parse("mailto:" + DEV_EMAIL + "?subject=" + Uri.encode(subject)));
+        try {
+            startActivity(mail);
+            return;
+        } catch (Exception ignored) { }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Связаться с разработчиком")
+                .setMessage(DEV_EMAIL + "\n\nПочтового приложения на телефоне нет — "
+                        + "адрес можно скопировать и написать с другого устройства.")
+                .setPositiveButton("Копировать", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        android.content.ClipboardManager cb = (android.content.ClipboardManager)
+                                getSystemService(CLIPBOARD_SERVICE);
+                        cb.setPrimaryClip(ClipData.newPlainText("email", DEV_EMAIL));
+                        Toast.makeText(SettingsActivity.this,
+                                "Адрес скопирован", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("Закрыть", null)
+                .show();
     }
 
     private void runDiag() {        diagView.setText("Опрашиваю датчик…");

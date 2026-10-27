@@ -4,6 +4,7 @@ import android.content.Context;
 import android.location.Location;
 import android.location.LocationManager;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -144,6 +145,26 @@ final class Weather {
         }, "weather").start();
     }
 
+    /**
+     * Погода на запуске приложения — один раз за жизнь процесса.
+     * По решению владельца (27.10.2026) чаще не нужно: запрос идёт только при
+     * старте, между запусками живёт кэш, ручное обновление осталось в тестах.
+     */
+    static void refreshOnStart(final Context ctx) {
+        if (started || fetching) return;
+        started = true;
+        fetching = true;
+        final Context app = ctx.getApplicationContext();
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try { refreshNow(app); } catch (Exception ignored) { }
+                fetching = false;
+            }
+        }, "weather-start").start();
+    }
+
+    private static volatile boolean started = false;
+
     /** Синхронное обновление. true — данные обновились. */
     static boolean refreshNow(Context ctx) {
         boolean real = ensureCoords(ctx);
@@ -159,10 +180,87 @@ final class Weather {
                     .getOffset(System.currentTimeMillis()) / 3600000f * 15f;
         }
 
+        if (fetchMetNo(ctx, lat, lon)) return true;
         if (fetchWttr(ctx, lat, lon)) return true;
         if (fetchOpenMeteo(ctx, lat, lon)) return true;
         note(ctx, "нет связи с погодой");
         return false;
+    }
+
+    /**
+     * met.no (Норвежский метеоинститут): бесплатно, без ключа, отдаёт
+     * `cloud_area_fraction` — настоящий процент облачности, а не догадку
+     * из текста. Ответ ~38 КБ и приходит меньше секунды. Требует внятный
+     * User-Agent с ссылкой на проект, иначе 403.
+     */
+    private static boolean fetchMetNo(Context ctx, float lat, float lon) {
+        try {
+            String url = String.format(Locale.US,
+                    "https://api.met.no/weatherapi/locationforecast/2.0/compact"
+                            + "?lat=%.4f&lon=%.4f", lat, lon);
+            String body = get(url, "ShagoSad/10.8 github.com/muzikamv-dot/shagosad");
+            JSONObject root = new JSONObject(body);
+            JSONObject props = root.optJSONObject("properties");
+            JSONArray series = props == null ? null : props.optJSONArray("timeseries");
+            if (series == null || series.length() == 0) {
+                note(ctx, "met.no: пустой ряд");
+                return false;
+            }
+            JSONObject first = series.getJSONObject(0);
+            JSONObject data = first.optJSONObject("data");
+            if (data == null) {
+                note(ctx, "met.no: нет data");
+                return false;
+            }
+
+            JSONObject details = data.optJSONObject("instant") == null ? null
+                    : data.getJSONObject("instant").optJSONObject("details");
+            float temp = (float) (details == null ? Float.NaN
+                    : details.optDouble("air_temperature", Float.NaN));
+            int cloud = details == null ? -1
+                    : (int) Math.round(details.optDouble("cloud_area_fraction", -1));
+
+            String symbol = "";
+            float prec = 0f;
+            JSONObject next = data.optJSONObject("next_1_hours");
+            if (next != null) {
+                JSONObject sum = next.optJSONObject("summary");
+                if (sum != null) symbol = sum.optString("symbol_code", "");
+                JSONObject nd = next.optJSONObject("details");
+                if (nd != null) prec = (float) nd.optDouble("precipitation_amount", 0);
+            }
+
+            int code = codeFromSymbol(symbol);
+            float snow = (code == 71 || code == 73 || code == 75 || code == 85) ? 1f : 0f;
+            if (cloud < 0) cloud = cloudFromCode(code);
+
+            save(ctx, temp, code, cloud, prec, snow, "met.no");
+            note(ctx, "ок · " + symbol);
+            return true;
+        } catch (Exception e) {
+            note(ctx, "met.no: " + e.getClass().getSimpleName());
+            return false;
+        }
+    }
+
+    /** Символ met.no (например «partlycloudy_day») → код WMO. */
+    private static int codeFromSymbol(String symbol) {
+        String s = symbol == null ? "" : symbol.toLowerCase(Locale.US);
+        int cut = s.indexOf('_');
+        String base = cut > 0 ? s.substring(0, cut) : s;
+        if (base.startsWith("clearsky")) return 0;
+        if (base.startsWith("fair")) return 1;
+        if (base.startsWith("partlycloudy")) return 2;
+        if (base.startsWith("cloudy")) return 3;
+        if (base.startsWith("fog")) return 45;
+        if (base.contains("thunder")) return 95;
+        if (base.contains("sleet")) return 66;
+        if (base.contains("snowshowers")) return 85;
+        if (base.contains("snow")) return base.startsWith("heavy") ? 75 : 71;
+        if (base.contains("rainshowers")) return 80;
+        if (base.contains("rain")) return base.startsWith("heavy") ? 65 : 61;
+        if (base.contains("showers")) return 80;
+        return -1;
     }
 
     /**

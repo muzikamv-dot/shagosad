@@ -371,8 +371,8 @@ public class GardenView extends View {
 
         r.set(card);
         // Сцена внутри карточки: небо по высоте солнца, светила на своих местах,
-        // облака и осадки по реальной погоде (open-meteo). Ручная настройка главнее.
-        Weather.refreshAsync(getContext());
+        // облака и осадки по реальной погоде. Погода обновляется при запуске
+        // приложения, а не в каждом кадре.
         float sceneTime = (System.currentTimeMillis() % 3600000L) / 1000f;
         DayPhase.drawBack(getContext(), c, card, 26 * d, d, sceneTime);
         st.setColor(Theme.PANEL_BORDER); st.setStrokeWidth(1 * d);

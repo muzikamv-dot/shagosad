@@ -94,7 +94,7 @@ public class MainActivity extends Activity {
     private View lastPage;
     private LinearLayout pageDots;
     private int tab = 0;
-    private final String[] TITLES = {"ШАГОСАД", "САД", "ЗАДАНИЯ", "ПРОФИЛЬ", "НАГРАДЫ"};
+    private final String[] TITLES = {"ШАГОСАД", "САД", "ЗАДАНИЯ", "ПРОФИЛЬ", "ДОСТИЖЕНИЯ"};
 
     private final Handler ui = new Handler(Looper.getMainLooper());
     private volatile boolean syncing = false;
@@ -119,10 +119,23 @@ public class MainActivity extends Activity {
         }
         game.save(this);
         setContentView(buildUi());
+
+        // Награды: всё, что получено и ещё ни разу не показывалось, проигрываем
+        // по очереди полноэкранно. После обновления сюда попадут и старые медали.
+        final java.util.List<Achievements.Ach> toShow = Achievements.unshown(game, this);
+        if (!toShow.isEmpty()) {
+            getWindow().getDecorView().post(new Runnable() {
+                @Override public void run() {
+                    AchievementActivity.showQueue(MainActivity.this, toShow);
+                }
+            });
+        }
         AlarmScheduler.schedule(this);
         SyncJobService.schedule(this);   // замер шагов в фоне: точная разбивка по дням
         AlarmScheduler.scheduleSync(this);   // и будильник: он пробивается через сон
         askFirstRunPermissions();
+        // погода для сцены: один запрос на запуск приложения, дальше живёт кэш
+        Weather.refreshOnStart(this);
 
         SharedPreferences sp = getSharedPreferences(Steps.PREFS, MODE_PRIVATE);
         if (!sp.getBoolean("onboarding_off", false)) {
@@ -183,8 +196,6 @@ public class MainActivity extends Activity {
         if (game.checkMissedDays(this)) game.save(this);
         refreshAll();
         runSync();
-        // погода для сцены: тянем в фоне, если кэш старше 20 минут (иначе мгновенно)
-        Weather.refreshAsync(this);
         ui.removeCallbacks(ticker);
         ui.post(ticker);
     }
@@ -420,7 +431,7 @@ public class MainActivity extends Activity {
         // по 8dp сверху и снизу: подсветка вкладки не прилипает к разделителю
         bar.setPadding(dp(6), dp(8), dp(6), dp(8));
 
-        String[] names = {"Шаги", "Сад", "Задания", "Профиль", "Награды"};
+        String[] names = {"Шаги", "Сад", "Задания", "Профиль", "Достижения"};
         for (int i = 0; i < names.length; i++) {
             final int index = i;
             LinearLayout item = new LinearLayout(this);
@@ -439,7 +450,13 @@ public class MainActivity extends Activity {
 
             TextView label = new TextView(this);
             label.setText(names[i]);
+            // «Достижения» длиннее прежних «Наград»: даём подписи ужиматься,
+            // иначе на крупном системном шрифте она обрезается
             label.setTextSize(10.5f);
+            if (Build.VERSION.SDK_INT >= 26) {
+                label.setAutoSizeTextTypeUniformWithConfiguration(
+                        8, 11, 1, TypedValue.COMPLEX_UNIT_SP);
+            }
             // без этого TextView добавляет шрифтовые поля сверху и снизу,
             // и подпись визуально «висит» ниже иконки
             label.setIncludeFontPadding(false);
