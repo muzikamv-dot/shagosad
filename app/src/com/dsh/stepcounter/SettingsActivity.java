@@ -331,7 +331,8 @@ public class SettingsActivity extends Activity {
         });
         testBox.addView(manual);
 
-        Button check = row("Проверить датчик шагов");
+        // состояние датчика: значение счётчика, сегодняшние шаги, батчинг, разрешение
+        Button check = row("Состояние датчика шагов");
         check.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { runDiag(); }
         });
@@ -387,6 +388,7 @@ public class SettingsActivity extends Activity {
         diagView.setTextColor(Theme.FAINT);
         diagView.setTextSize(10);
         diagView.setLineSpacing(dp(3), 1f);
+        diagView.setTextIsSelectable(true);
         diagView.setPadding(dp(4), dp(4), dp(4), dp(8));
         testBox.addView(diagView);
         box.addView(testBox);

@@ -90,18 +90,36 @@ final class SensorSync {
         int fifoRes = sensor.getFifoReservedEventCount();
         long maxDelay = sensor.getMaxDelay();
 
+        r.today = Steps.refreshToday(ctx);
+
         r.batching = fifoMax > 0;
         StringBuilder sb = new StringBuilder();
         sb.append(sensor.getName()).append(" · ").append(sensor.getVendor());
+        sb.append("\nСчётчик сейчас: ").append(r.raw);
+        sb.append("\nСегодня: ").append(r.today).append(" шагов");
         sb.append("\nБатчинг: ").append(fifoMax > 0 ? "да" : "нет");
         if (fifoMax > 0) sb.append(" (буфер ").append(fifoMax).append(", резерв ").append(fifoRes).append(")");
+        else sb.append(" — история за прошлое не отдаётся");
         sb.append("\nМакс. задержка датчика: ").append(maxDelay / 1000000L).append(" мс");
         sb.append("\nПолучено за сеанс: ").append(events.size()).append(", новых: ").append(saved);
+        sb.append("\nРазрешение ACTIVITY_RECOGNITION: ")
+          .append(hasActivityPermission(ctx) ? "есть" : "нет");
+        sb.append("\nЗамер: ").append(new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
+                .format(new java.util.Date()));
         r.diag = sb.toString();
         android.util.Log.i("SensorSync", "событий " + events.size() + ", записано " + saved
                 + ", батчинг " + (fifoMax > 0 ? "да" : "нет") + ", raw " + r.raw);
 
-        r.today = Steps.refreshToday(ctx);
         return r;
+    }
+
+    /** Разрешение на распознавание активности: без него счётчик шагов молчит. */
+    static boolean hasActivityPermission(Context ctx) {
+        try {
+            return ctx.checkSelfPermission(android.Manifest.permission.ACTIVITY_RECOGNITION)
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        } catch (Exception e) {
+            return true;
+        }
     }
 }
