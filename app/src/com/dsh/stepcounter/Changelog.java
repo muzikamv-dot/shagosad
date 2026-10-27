@@ -25,7 +25,7 @@ public final class Changelog {
     private Changelog() { }
 
     public static final Day[] DAYS = {
-            new Day("27 октября 2026", "10.0 – 10.23", new String[]{
+            new Day("27 октября 2026", "10.0 – 10.26", new String[]{
                     "Достижения переехали из нижней вкладки в профиль: там теперь два ряда "
                             + "кнопок — «Магазин» и «Коллекция», под ними «Инвентарь» "
                             + "и «Достижения»",

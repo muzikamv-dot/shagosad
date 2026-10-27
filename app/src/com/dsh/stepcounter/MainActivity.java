@@ -936,10 +936,11 @@ public class MainActivity extends Activity {
         box.setGravity(Gravity.CENTER_HORIZONTAL);
         box.setPadding(dp(18), dp(14), dp(18), dp(24));
 
-        // вместо смайликов — лента-триколор, нарисованная кодом
+        // лента-триколор: картинка вырезана из референса владельца
         FlagRibbon ribbon = new FlagRibbon(this);
-        int rw = Math.min(dp(250), getResources().getDisplayMetrics().widthPixels - dp(72));
-        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(rw, dp(54));
+        int rw = Math.min(dp(300), getResources().getDisplayMetrics().widthPixels - dp(48));
+        int rh = Math.round(rw / FlagRibbon.aspect());
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(rw, rh);
         rlp.gravity = Gravity.CENTER_HORIZONTAL;
         box.addView(ribbon, rlp);
 
