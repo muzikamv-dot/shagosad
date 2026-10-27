@@ -139,6 +139,52 @@ public class CollectionActivity extends Activity {
 
         root.addView(Ui.divider(this));
 
+        // Уникальные цветы из ивентов: пока пустые места, они заполнятся,
+        // когда в игре появятся праздничные семечки.
+        LinearLayout events = new LinearLayout(this);
+        events.setOrientation(LinearLayout.VERTICAL);
+        events.setPadding(pad, dp(12), pad, dp(2));
+
+        TextView evTitle = new TextView(this);
+        evTitle.setText("ИЗ ИВЕНТОВ");
+        evTitle.setTextColor(Theme.FAINT);
+        evTitle.setTextSize(10);
+        evTitle.setLetterSpacing(0.10f);
+        events.addView(evTitle);
+
+        LinearLayout slots = new LinearLayout(this);
+        slots.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        slp.topMargin = dp(8);
+        for (int i = 0; i < 4; i++) {
+            TextView slot = new TextView(this);
+            slot.setText("✿");
+            slot.setTextSize(20);
+            slot.setTextColor(Theme.STROKE);
+            slot.setGravity(Gravity.CENTER);
+            slot.setIncludeFontPadding(false);
+            GradientDrawable empty = new GradientDrawable();
+            empty.setColor(0x00000000);
+            empty.setCornerRadius(dp(16));
+            empty.setStroke(dp(1), Theme.CARD_STROKE);
+            slot.setBackground(empty);
+            LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(0, dp(54), 1f);
+            if (i > 0) ilp.leftMargin = dp(10);
+            slots.addView(slot, ilp);
+        }
+        events.addView(slots, slp);
+
+        TextView evHint = new TextView(this);
+        evHint.setText("места для цветов из праздничных событий");
+        evHint.setTextColor(Theme.FAINT);
+        evHint.setTextSize(9.5f);
+        LinearLayout.LayoutParams ehp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        ehp.topMargin = dp(7);
+        events.addView(evHint, ehp);
+        root.addView(events);
+
         grid = new CollectionView(this);
         grid.setListener(new CollectionView.Listener() {
             @Override public void onSpeciesTap(int species, boolean collected) {

@@ -67,10 +67,9 @@ public class MainActivity extends Activity {
     private TextView dBest, dAvg, dTotal, dDays, dFlowers, dSpecies;
     private Button goalButton;
     private LinearLayout medalRow;
-    private Button shopButton, herbButton, bagButton;
+    private Button shopButton, herbButton, bagButton, achButton;
     private Bitmap avatarBitmap;
     private ScrollView achPage;
-    private LinearLayout achList;
 
     private TextView stepsView;
     private TextView goalView;
@@ -94,7 +93,7 @@ public class MainActivity extends Activity {
     private View lastPage;
     private LinearLayout pageDots;
     private int tab = 0;
-    private final String[] TITLES = {"ШАГОСАД", "САД", "ЗАДАНИЯ", "ПРОФИЛЬ", "ДОСТИЖЕНИЯ"};
+    private final String[] TITLES = {"ШАГОСАД", "САД", "ЗАДАНИЯ", "ПРОФИЛЬ", "ИВЕНТЫ"};
 
     private final Handler ui = new Handler(Looper.getMainLooper());
     private volatile boolean syncing = false;
@@ -370,13 +369,9 @@ public class MainActivity extends Activity {
         container.addView(profilePage, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        achPage = new ScrollView(this);
-        achPage.setFillViewport(true);
-        achList = new LinearLayout(this);
-        achList.setOrientation(LinearLayout.VERTICAL);
-        achList.setPadding(dp(16), dp(4), dp(16), dp(16));
-        achPage.addView(achList, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // Пятая вкладка — «Ивенты». Достижения переехали в профиль кнопкой,
+        // чтобы освободить место под праздничные события.
+        achPage = buildEventsPage();
         container.addView(achPage, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
@@ -431,7 +426,7 @@ public class MainActivity extends Activity {
         // по 8dp сверху и снизу: подсветка вкладки не прилипает к разделителю
         bar.setPadding(dp(6), dp(8), dp(6), dp(8));
 
-        String[] names = {"Шаги", "Сад", "Задания", "Профиль", "Достижения"};
+        String[] names = {"Шаги", "Сад", "Задания", "Профиль", "Ивенты"};
         for (int i = 0; i < names.length; i++) {
             final int index = i;
             LinearLayout item = new LinearLayout(this);
@@ -506,7 +501,6 @@ public class MainActivity extends Activity {
         if (index == 1) garden.setGame(game);
         if (index == 2) quests.setGame(game);
         if (index == 3) refreshProfile();
-        if (index == 4) rebuildAchievements();
 
         View page = index == 0 ? stepsPage : index == 1 ? garden
                 : index == 2 ? quests : index == 3 ? profilePage : achPage;
@@ -828,7 +822,6 @@ public class MainActivity extends Activity {
         refreshProfile();
         if (waterCount != null) waterCount.set(game.water);
         cardStreak.setText(game.streak + " дн.");
-        rebuildAchievements();
 
         checkAchievements();
     }
@@ -931,6 +924,103 @@ public class MainActivity extends Activity {
         return v;
     }
 
+    /**
+     * Вкладка «Ивенты»: праздничный анонс. Всё по центру и в две колонки одинаковой
+     * ширины — раньше текст прилипал влево, а справа оставалась пустота.
+     */
+    private ScrollView buildEventsPage() {
+        ScrollView page = new ScrollView(this);
+        page.setFillViewport(true);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER_HORIZONTAL);
+        box.setPadding(dp(18), dp(14), dp(18), dp(24));
+
+        // вместо смайликов — лента-триколор, нарисованная кодом
+        FlagRibbon ribbon = new FlagRibbon(this);
+        int rw = Math.min(dp(250), getResources().getDisplayMetrics().widthPixels - dp(72));
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(rw, dp(54));
+        rlp.gravity = Gravity.CENTER_HORIZONTAL;
+        box.addView(ribbon, rlp);
+
+        TextView headline = centered("СКОРО В ШАГОСАДЕ\nПРАЗДНИЧНОЕ СОБЫТИЕ!", 18.5f,
+                Theme.ACCENT_SOFT, true, 8);
+        box.addView(headline);
+
+        // золотой бейдж с датой — по центру, как медаль на груди
+        TextView badge = new TextView(this);
+        badge.setText("4 НОЯБРЯ · ДЕНЬ НАРОДНОГО ЕДИНСТВА");
+        badge.setTextColor(Theme.GOLD);
+        badge.setTextSize(9f);
+        badge.setLetterSpacing(0.08f);
+        badge.setGravity(Gravity.CENTER);
+        badge.setIncludeFontPadding(false);
+        GradientDrawable pill = new GradientDrawable();
+        pill.setColor(Theme.SURFACE_HI);
+        pill.setCornerRadius(dp(20));
+        pill.setStroke(dp(1), Theme.GOLD);
+        badge.setBackground(pill);
+        badge.setPadding(dp(14), dp(8), dp(14), dp(8));
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        blp.topMargin = dp(6);
+        box.addView(badge, blp);
+
+        // карточка с самим текстом: тёплый градиент, чтобы читалось как открытка
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER_HORIZONTAL);
+        GradientDrawable cardBg = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{Theme.SURFACE_HI, Theme.SURFACE});
+        cardBg.setCornerRadius(dp(26));
+        cardBg.setStroke(dp(1), Theme.CARD_STROKE);
+        card.setBackground(cardBg);
+        card.setPadding(dp(16), dp(14), dp(16), dp(14));
+
+        card.addView(centered("В честь Дня народного единства,\nкоторый отмечается 4 ноября,\n"
+                + "в ШагоСаде готовится особенный сюрприз!", 13.5f, Theme.TEXT, false, 0));
+        card.addView(centered("Совсем скоро в игровом магазине\nпоявится уникальное праздничное семечко, "
+                + "которое можно будет приобрести и вырастить.", 12.5f, Theme.MUTED, false, 11));
+        card.addView(centered("Что же вырастет из этого необычного семечка?\nКакой сюрприз оно приготовило?",
+                13.5f, Theme.MUTED, false, 12));
+        card.addView(centered("Следите за новостями и готовьте грядки —\nпраздничное событие уже близко!",
+                13.5f, Theme.MUTED, false, 12));
+
+        // разделитель из звёздочек — вместо пустого места справа
+        TextView stars = centered("✦   ✦   ✦", 12, Theme.FAINT, false, 11);
+        card.addView(stars);
+
+        TextView finalLine = centered("День народного единства в ШагоСаде.\nСкоро в игре!", 15,
+                Theme.ACCENT_SOFT, true, 12);
+        card.addView(finalLine);
+
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        clp.topMargin = dp(12);
+        box.addView(card, clp);
+
+        page.addView(box, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return page;
+    }
+
+    /** Текст по центру с одинаковым верхним отступом — чтобы блок был симметричным. */
+    private TextView centered(String text, float size, int color, boolean medium, int topMargin) {
+        TextView v = new TextView(this);
+        v.setText(text);
+        v.setTextSize(size);
+        v.setTextColor(color);
+        v.setGravity(Gravity.CENTER);
+        v.setTextAlignment(TextView.TEXT_ALIGNMENT_CENTER);
+        v.setLineSpacing(dp(5), 1f);
+        if (medium) v.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(topMargin);
+        v.setLayoutParams(lp);
+        return v;
+    }
     private ScrollView buildProfilePage() {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
@@ -979,13 +1069,13 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         ap.topMargin = dp(12);
 
+        // два ряда по две кнопки: Магазин и Коллекция, под ними Инвентарь и Достижения
         shopButton = outlined("Магазин");
         shopButton.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 startActivity(new Intent(MainActivity.this, ShopActivity.class));
             }
         });
-        // 10dp: при 8dp третья кнопка выходила на пиксель шире
         LinearLayout.LayoutParams bp1 = new LinearLayout.LayoutParams(0, dp(46), 1f);
         bp1.rightMargin = dp(10);
         actions.addView(shopButton, bp1);
@@ -996,9 +1086,14 @@ public class MainActivity extends Activity {
                 startActivity(new Intent(MainActivity.this, CollectionActivity.class));
             }
         });
-        LinearLayout.LayoutParams bp2 = new LinearLayout.LayoutParams(0, dp(46), 1f);
-        bp2.rightMargin = dp(10);
-        actions.addView(herbButton, bp2);
+        actions.addView(herbButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        root.addView(actions, ap);
+
+        LinearLayout actions2 = new LinearLayout(this);
+        actions2.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams ap2 = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        ap2.topMargin = dp(10);
 
         bagButton = outlined("Инвентарь");
         bagButton.setOnClickListener(new View.OnClickListener() {
@@ -1006,16 +1101,22 @@ public class MainActivity extends Activity {
                 startActivity(new Intent(MainActivity.this, InventoryActivity.class));
             }
         });
-        actions.addView(bagButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
-        root.addView(actions, ap);
+        LinearLayout.LayoutParams bp3 = new LinearLayout.LayoutParams(0, dp(46), 1f);
+        bp3.rightMargin = dp(10);
+        actions2.addView(bagButton, bp3);
 
-        medalRow = new LinearLayout(this);
-        medalRow.setOrientation(LinearLayout.HORIZONTAL);
-        medalRow.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams mrp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        mrp.topMargin = dp(14);
-        root.addView(medalRow, mrp);
+        achButton = outlined("Достижения");
+        achButton.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, AchievementsActivity.class));
+            }
+        });
+        actions2.addView(achButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        root.addView(actions2, ap2);
+
+        // Медали в профиле больше не показываем: они живут в отдельном экране
+        // «Достижения» (кнопка в ряду выше). medalRow остаётся null,
+        // и rebuildMedals() выходит сразу — остальной код не ломается.
 
         LinearLayout row1 = new LinearLayout(this);
         row1.setOrientation(LinearLayout.HORIZONTAL);
@@ -1514,113 +1615,8 @@ public class MainActivity extends Activity {
             String msg = "Достижение: " + fresh.get(0).title;
             if (cardFlowActive) pendingAch = msg;
             else Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
-            rebuildAchievements();
             if (waterCount != null) waterCount.set(game.water);
         }
-    }
-
-    private void rebuildAchievements() {
-        if (achList == null) return;
-        achList.removeAllViews();
-
-        int opened = 0;
-        for (Achievements.Ach a : Achievements.ALL) {
-            if (game.unlocked.contains(a.id)) opened++;
-        }
-
-        TextView head = new TextView(this);
-        head.setText("ОТКРЫТО " + opened + " ИЗ " + Achievements.ALL.size());
-        head.setTextColor(Theme.FAINT);
-        head.setTextSize(10);
-        head.setLetterSpacing(0.10f);
-        LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hp.topMargin = dp(8);
-        hp.bottomMargin = dp(10);
-        achList.addView(head, hp);
-
-        for (Achievements.Ach a : Achievements.ALL) {
-            achList.addView(achCard(a));
-        }
-    }
-
-    private View achCard(Achievements.Ach a) {
-        boolean on = game.unlocked.contains(a.id);
-        int cur = Math.min(Achievements.progress(a, game, totalSteps()), a.target);
-        boolean levelAch = a.metric == Achievements.Metric.LEVEL;
-        if (levelAch) {
-            // уровень стартует с 1 — показываем прогресс от нуля
-            cur = Math.max(0, Math.min(a.target - 1, game.level() - 1));
-        }
-
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        GradientDrawable bg = new GradientDrawable();
-        // цвета из темы: раньше здесь были вкомпилированы тёмно-зелёные, и в светлой
-        // теме карточки достижений выглядели тёмными блоками
-        bg.setColor(on ? Theme.SURFACE_HI : Theme.SURFACE);
-        bg.setCornerRadius(dp(22));
-        bg.setStroke(dp(1), on ? Theme.ACCENT_DEEP : Theme.CARD_STROKE);
-        row.setBackground(bg);
-        row.setPadding(dp(14), dp(11), dp(14), dp(11));
-
-        ImageView badge = new ImageView(this);
-        try {
-            int rid = getResources().getIdentifier("medal_" + a.id, "drawable", getPackageName());
-            if (rid != 0) badge.setImageResource(rid);
-            if (on) {
-                badge.setColorFilter(null);
-                badge.setAlpha(1f);
-            } else {
-                badge.setColorFilter(Theme.FAINT,
-                        android.graphics.PorterDuff.Mode.MULTIPLY);
-                badge.setAlpha(0.65f);
-            }
-        } catch (Exception ignored) { }
-        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(dp(38), dp(38));
-        blp.rightMargin = dp(10);
-        row.addView(badge, blp);
-
-        LinearLayout col = new LinearLayout(this);
-        col.setOrientation(LinearLayout.VERTICAL);
-
-        TextView title = new TextView(this);
-        title.setText(a.title);
-        title.setTextSize(13.5f);
-        title.setTextColor(Color.parseColor(on ? "#F2FBF6" : "#7E9A8F"));
-        col.addView(title);
-
-        TextView desc = new TextView(this);
-        desc.setText(a.desc);
-        desc.setTextSize(10);
-        desc.setTextColor(Color.parseColor(on ? "#6E8A80" : "#3F5A50"));
-        col.addView(desc);
-
-        ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        bar.setMax(levelAch ? Math.max(1, a.target - 1) : a.target);
-        bar.setProgress(cur);
-        LinearLayout.LayoutParams brp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(5));
-        brp.topMargin = dp(6);
-        col.addView(bar, brp);
-
-        row.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        TextView state = new TextView(this);
-        state.setText(on ? "готово"
-                : (levelAch ? "уровень " + game.level() + " из " + a.target
-                            : cur + " / " + a.target));
-        state.setTextSize(10);
-        state.setTextColor(Color.parseColor(on ? "#4BE3B0" : "#3F5A50"));
-        state.setPadding(dp(10), 0, 0, 0);
-        row.addView(state);
-
-        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rp.bottomMargin = dp(8);
-        row.setLayoutParams(rp);
-        return row;
     }
 
     // ---------------- действия ----------------
