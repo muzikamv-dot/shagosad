@@ -118,12 +118,43 @@ final class Steps {
             sb.append(e[0]).append('|').append(e[1]).append('|').append(e[2]).append('\n');
             lastKept = e[0];
         }
-        File f = new File(ctx.getFilesDir(), FILE);
+        writeAtomically(new File(ctx.getFilesDir(), FILE), sb.toString());
+    }
+
+    /**
+     * Атомарная запись файла: пишем в «.tmp» рядом и переименовываем.
+     *
+     * Переименование в одной папке неделимо, поэтому файл всегда либо целиком
+     * старый, либо целиком новый. Раньше файл сначала обнулялся (FileWriter с
+     * append=false) и только потом наполнялся: если процесс убивали посередине,
+     * оставался огрызок — часть журнала пропадала навсегда.
+     */
+    static boolean writeAtomically(File target, String text) {
+        File tmp = new File(target.getParentFile(), target.getName() + ".tmp");
         FileWriter w = null;
         try {
-            w = new FileWriter(f, false);
-            w.write(sb.toString());
+            w = new FileWriter(tmp, false);
+            w.write(text);
+            w.flush();
+            w.close();
+            w = null;
+            if (tmp.renameTo(target)) return true;
         } catch (Exception ignored) {
+        } finally {
+            try { if (w != null) w.close(); } catch (Exception ignored) { }
+        }
+        // переименование не прошло — пишем напрямую, лишь бы данные не потерялись
+        w = null;
+        try {
+            w = new FileWriter(target, false);
+            w.write(text);
+            w.flush();
+            w.close();
+            w = null;
+            tmp.delete();
+            return true;
+        } catch (Exception ignored) {
+            return false;
         } finally {
             try { if (w != null) w.close(); } catch (Exception ignored) { }
         }

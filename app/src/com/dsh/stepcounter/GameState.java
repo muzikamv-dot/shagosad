@@ -467,9 +467,9 @@ public class GameState {
             o.put("stage", new JSONArray(stage));
             o.put("species", new JSONArray(species));
 
-            FileWriter w = new FileWriter(new File(ctx.getFilesDir(), FILE), false);
-            w.write(o.toString());
-            w.close();
+            // атомарно: сначала «.tmp», потом переименование — прогресс не пострадает,
+            // если процесс убьют посреди записи
+            Steps.writeAtomically(new File(ctx.getFilesDir(), FILE), o.toString());
         } catch (Exception ignored) { }
     }
 
