@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.dsh.stepcounter"
-    android:versionCode="83"
-    android:versionName="9.9">
+    android:versionCode="84"
+    android:versionName="10.0">
 
     <!-- доступ к счётчику шагов -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
@@ -96,6 +96,10 @@
             android:name=".SyncJobService"
             android:exported="true"
             android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <receiver
+            android:name=".SyncReceiver"
+            android:exported="false" />
 
         <receiver
             android:name=".StepWidget"

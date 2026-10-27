@@ -121,13 +121,53 @@ public class MainActivity extends Activity {
         setContentView(buildUi());
         AlarmScheduler.schedule(this);
         SyncJobService.schedule(this);   // замер шагов в фоне: точная разбивка по дням
+        AlarmScheduler.scheduleSync(this);   // и будильник: он пробивается через сон
         askFirstRunPermissions();
 
         SharedPreferences sp = getSharedPreferences(Steps.PREFS, MODE_PRIVATE);
         if (!sp.getBoolean("onboarding_off", false)) {
             startActivity(new Intent(this, OnboardingActivity.class));
+        } else {
+            maybeShowApology();
         }
         showTab(0);
+    }
+
+    /**
+     * Извинение за неверный подсчёт шагов: показывается ОДИН раз и больше никогда.
+     * Флаг ставим до показа, чтобы окно не вернулось даже при падении приложения.
+     * Для нового сообщения в следующем релизе достаточно нового имени флага.
+     */
+    private void maybeShowApology() {
+        SharedPreferences p = getSharedPreferences(Steps.PREFS, MODE_PRIVATE);
+        if (p.getBoolean("apology_steps_shown", false)) return;
+        p.edit().putBoolean("apology_steps_shown", true).apply();
+
+        new AlertDialog.Builder(this)
+                .setTitle("Просим прощения за шаги")
+                .setMessage(
+                        "В версиях до 9.9 шаги за день могли занижаться: приложение редко "
+                        + "опрашивало счётчик, и шаги за пропущенное время делились между днями, "
+                        + "уходя во вчерашний. В 9.9 это исправлено — счётчик теперь опрашивается "
+                        + "каждые 15 минут, даже когда приложение закрыто.\n\n"
+
+                        + "ОТКУДА БЕРУТСЯ ШАГИ\n"
+                        + "Телефон считает их отдельным аппаратным счётчиком (step counter) — тем же "
+                        + "источником, что и системное «Здоровье». Он считает только реальные шаги "
+                        + "и почти не тратит батарею.\n\n"
+                        + "Google Fit чаще считает иначе: он обрабатывает акселерометр своим "
+                        + "алгоритмом и засчитывает мелкие шаги и движения, которых аппаратный "
+                        + "счётчик не видит. Поэтому его цифра обычно выше.\n\n"
+
+                        + "КАКОЕ РАСХОЖДЕНИЕ НОРМАЛЬНО\n"
+                        + "• до 5% — точное совпадение\n"
+                        + "• 5–10% — норма, методы подсчёта разные\n"
+                        + "• 15% и больше — это уже ошибка, пришлите скриншоты обоих приложений, "
+                        + "разберёмся\n\n"
+                        + "Мы считаем именно пройденные шаги, а не «активность», поэтому при ходьбе "
+                        + "с телефоном в кармане цифры должны быть близки к системным.")
+                .setPositiveButton("Закрыть", null)
+                .show();
     }
 
     @Override

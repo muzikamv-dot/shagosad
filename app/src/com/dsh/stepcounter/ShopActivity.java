@@ -286,7 +286,7 @@ public class ShopActivity extends Activity {
         col.addView(t);
 
         TextView d = new TextView(this);
-        d.setText(Shop.money(price) + " очков · у вас: " + owned);
+        d.setText(Shop.money(price) + " очков");
         d.setTextColor(Theme.MUTED);
         d.setTextSize(10.5f);
         d.setPadding(0, dp(3), 0, 0);
@@ -300,7 +300,9 @@ public class ShopActivity extends Activity {
         action.setTextSize(11);
         action.setStateListAnimator(null);
         boolean affordable = game.points >= price;
+        // купить можно только если очков хватает: иначе кнопка неактивна
         action.setText("купить");
+        action.setEnabled(affordable);
         action.setTextColor(affordable ? Theme.ON_ACCENT : Theme.FAINT);
         GradientDrawable bd = new GradientDrawable();
         bd.setCornerRadius(dp(14));
