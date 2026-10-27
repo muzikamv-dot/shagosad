@@ -2,6 +2,7 @@ package com.dsh.stepcounter;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipData;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -31,6 +32,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -338,6 +341,13 @@ public class SettingsActivity extends Activity {
         });
         testBox.addView(check);
 
+        // сам журнал датчика: что реально накопилось в journal.txt
+        Button journal = row("Журнал шагов (содержимое)");
+        journal.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showJournal(); }
+        });
+        testBox.addView(journal);
+
         // Обучение показывается один раз; чтобы посмотреть его снова или проверить
         // галочку «больше не показывать», сбрасываем флаг и открываем экран
         Button again = row("Показать обучение заново");
@@ -634,6 +644,80 @@ public class SettingsActivity extends Activity {
                 });
             }
         }).start();
+    }
+
+    /**
+     * Показать содержимое журнала датчика (journal.txt): сводку и последние строки.
+     * Файл лежит в приватной папке приложения, снаружи его не прочитать —
+     * поэтому единственный способ увидеть его на телефоне без отладки это окно.
+     */
+    private void showJournal() {
+        File f = new File(getFilesDir(), "journal.txt");
+        String all = readText(f);
+        String[] lines = all.length() == 0 ? new String[0] : all.split("\n");
+
+        StringBuilder body = new StringBuilder();
+        body.append("Файл: ").append(f.getAbsolutePath()).append('\n');
+        body.append("Размер: ").append(f.exists() ? f.length() + " Б" : "файла нет").append('\n');
+        body.append("Строк: ").append(lines.length).append('\n');
+        if (lines.length > 0) {
+            body.append("Первая: ").append(lines[0]).append('\n');
+            body.append("Последняя: ").append(lines[lines.length - 1]).append('\n');
+        }
+        body.append("Формат: wallMillis|elapsedNanos|raw\n\n");
+
+        int show = Math.min(lines.length, 400);
+        if (lines.length > show) {
+            body.append("… ниже последние ").append(show).append(" строк из ").append(lines.length).append('\n');
+        }
+        for (int i = lines.length - show; i < lines.length; i++) {
+            body.append(lines[i]).append('\n');
+        }
+        if (lines.length == 0) body.append("Журнал пуст: замеров ещё не было.\n");
+
+        TextView tv = new TextView(this);
+        tv.setText(body.toString());
+        tv.setTextSize(9);
+        tv.setTextColor(Theme.TEXT);
+        tv.setTypeface(Typeface.MONOSPACE);
+        tv.setTextIsSelectable(true);
+        int pad = dp(14);
+        tv.setPadding(pad, pad, pad, pad);
+
+        ScrollView sc = new ScrollView(this);
+        sc.addView(tv);
+
+        final String copySource = all;
+        new AlertDialog.Builder(this)
+                .setTitle("Журнал шагов")
+                .setView(sc)
+                .setPositiveButton("Копировать", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        android.content.ClipboardManager cb = (android.content.ClipboardManager)
+                                getSystemService(CLIPBOARD_SERVICE);
+                        cb.setPrimaryClip(ClipData.newPlainText("journal.txt", copySource));
+                        Toast.makeText(SettingsActivity.this,
+                                "Журнал скопирован в буфер", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("Закрыть", null)
+                .show();
+    }
+
+    /** Прочитать текстовый файл целиком; отсутствие файла — пустая строка. */
+    private String readText(File f) {
+        if (f == null || !f.exists()) return "";
+        StringBuilder sb = new StringBuilder();
+        BufferedReader r = null;
+        try {
+            r = new BufferedReader(new FileReader(f));
+            String line;
+            while ((line = r.readLine()) != null) sb.append(line).append('\n');
+        } catch (Exception ignored) {
+        } finally {
+            try { if (r != null) r.close(); } catch (Exception ignored) { }
+        }
+        return sb.toString();
     }
 
     private String versionName() {
