@@ -30,7 +30,12 @@ final class SensorSync {
 
     private SensorSync() { }
 
-    static Result sync(Context ctx) {
+    /**
+     * Один «сеанс связи» с датчиком. synchronized: замер могут позвать сразу
+     * будильник и разблокировка экрана — второй подождёт, а не полезет в тот же
+     * журнал параллельно.
+     */
+    static synchronized Result sync(Context ctx) {
         Result r = new Result();
 
         SensorManager sm = (SensorManager) ctx.getSystemService(Context.SENSOR_SERVICE);

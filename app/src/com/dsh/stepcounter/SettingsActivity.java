@@ -45,6 +45,7 @@ public class SettingsActivity extends Activity {
 
     private GameState game;
     private TextView diagView;
+    private Button weatherButton;
     private void chooseTheme() {
         new AlertDialog.Builder(this)
                 .setTitle("Тема оформления")
@@ -277,6 +278,14 @@ public class SettingsActivity extends Activity {
         });
         box.addView(themeButton);
 
+        // Погода в сцене сада. В «авто» — настоящая из open-meteo по координатам,
+        // ручные значения её перекрывают.
+        weatherButton = row(weatherLabel());
+        weatherButton.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { cycleWeather(); }
+        });
+        box.addView(weatherButton);
+
         Button reset = row("Сбросить прогресс");
         reset.setTextColor(0xFFFF9A8A);
         reset.setOnClickListener(new View.OnClickListener() {
@@ -347,6 +356,48 @@ public class SettingsActivity extends Activity {
             @Override public void onClick(View v) { showJournal(); }
         });
         testBox.addView(journal);
+
+        // проверка сцены: посмотреть утро/день/вечер/ночь, не дожидаясь часов
+        final Button hourTest = row(hourTestLabel());
+        hourTest.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                SharedPreferences p = getSharedPreferences(Steps.PREFS, MODE_PRIVATE);
+                float cur = p.getFloat(DayPhase.PREF_HOUR, -1f);
+                float next;
+                if (cur < 0f) next = 7f;
+                else if (cur < 10f) next = 13f;
+                else if (cur < 16f) next = 19f;
+                else if (cur < 21f) next = 23f;
+                else next = -1f;
+                p.edit().putFloat(DayPhase.PREF_HOUR, next).apply();
+                hourTest.setText(hourTestLabel());
+            }
+        });
+        testBox.addView(hourTest);
+
+        // состояние погоды: реальные данные, кэш и ручное обновление
+        final Button weatherStatus = row(weatherStatusLabel());
+        weatherStatus.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                weatherStatus.setText("Обновляю погоду…");
+                new Thread(new Runnable() {
+                    @Override public void run() {
+                        final boolean ok = Weather.refreshNow(SettingsActivity.this);
+                        ui.post(new Runnable() {
+                            @Override public void run() {
+                                weatherStatus.setText(weatherStatusLabel());
+                                weatherButton.setText(weatherLabel());
+                                Toast.makeText(SettingsActivity.this,
+                                        ok ? "Погода обновлена"
+                                                : "Не удалось: " + Weather.note(SettingsActivity.this),
+                                        Toast.LENGTH_LONG).show();
+                            }
+                        });
+                    }
+                }, "weather-manual").start();
+            }
+        });
+        testBox.addView(weatherStatus);
 
         // Обучение показывается один раз; чтобы посмотреть его снова или проверить
         // галочку «больше не показывать», сбрасываем флаг и открываем экран
@@ -634,8 +685,54 @@ public class SettingsActivity extends Activity {
                 .show();
     }
 
-    private void runDiag() {
-        diagView.setText("Опрашиваю датчик…");
+    /** Погода в саду: авто → ясно → облачно → дождь → снег → авто. */
+    private void cycleWeather() {
+        SharedPreferences p = getSharedPreferences(Steps.PREFS, MODE_PRIVATE);
+        int next = DayPhase.nextWeather(p.getInt(DayPhase.PREF_WEATHER, DayPhase.WEATHER_AUTO));
+        p.edit().putInt(DayPhase.PREF_WEATHER, next).apply();
+        weatherButton.setText(weatherLabel());
+        if (next == DayPhase.WEATHER_AUTO) Weather.refreshAsync(this);
+        Toast.makeText(this, "Погода в саду: " + DayPhase.weatherName(next),
+                Toast.LENGTH_SHORT).show();
+    }
+
+    private String weatherLabel() {
+        int pref = DayPhase.weatherPref(this);
+        if (pref != DayPhase.WEATHER_AUTO) {
+            return "Погода в саду: " + DayPhase.weatherName(pref);
+        }
+        if (Weather.hasData(this)) {
+            return "Погода в саду: реальная — " + Weather.describe(Weather.code(this));
+        }
+        return "Погода в саду: авто (нет данных)";
+    }
+
+    private String weatherStatusLabel() {
+        StringBuilder sb = new StringBuilder("Погода: ");
+        if (!Weather.hasData(this)) {
+            sb.append("нет данных");
+            String n = Weather.note(this);
+            if (n != null && n.length() > 0) sb.append(" · ").append(n);
+            return sb.toString();
+        }
+        sb.append(Weather.describe(Weather.code(this)));
+        float t = Weather.temp(this);
+        if (!Float.isNaN(t)) sb.append(String.format(java.util.Locale.US, " · %.0f°", t));
+        int cloud = Weather.cloud(this);
+        if (cloud >= 0) sb.append(" · облачность ").append(cloud).append('%');
+        long age = (System.currentTimeMillis() - Weather.updatedAt(this)) / 60000L;
+        sb.append(" · ").append(age).append(" мин назад");
+        return sb.toString();
+    }
+
+    private String hourTestLabel() {
+        float h = getSharedPreferences(Steps.PREFS, MODE_PRIVATE)
+                .getFloat(DayPhase.PREF_HOUR, -1f);
+        if (h < 0f) return "Время суток в саду (тест): авто";
+        return "Время суток в саду (тест): " + Math.round(h) + ":00";
+    }
+
+    private void runDiag() {        diagView.setText("Опрашиваю датчик…");
         new Thread(new Runnable() {
             @Override public void run() {
                 final SensorSync.Result r = SensorSync.sync(SettingsActivity.this);

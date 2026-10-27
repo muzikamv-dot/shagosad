@@ -183,6 +183,8 @@ public class MainActivity extends Activity {
         if (game.checkMissedDays(this)) game.save(this);
         refreshAll();
         runSync();
+        // погода для сцены: тянем в фоне, если кэш старше 20 минут (иначе мгновенно)
+        Weather.refreshAsync(this);
         ui.removeCallbacks(ticker);
         ui.post(ticker);
     }
@@ -1668,14 +1670,20 @@ public class MainActivity extends Activity {
 
     private void askFirstRunPermissions() {
         SharedPreferences p = getSharedPreferences(Steps.PREFS, MODE_PRIVATE);
-        if (p.getBoolean("asked_perms", false)) return;
-        p.edit().putBoolean("asked_perms", true).apply();
+        // ключ сменили в 10.6: появилась геолокация для погоды, и выданные ранее
+        // разрешения не должны «заглушать» новый запрос
+        if (p.getBoolean("asked_perms2", false)) return;
+        p.edit().putBoolean("asked_perms2", true).apply();
         askRuntimePermissions();
     }
 
     private void askRuntimePermissions() {
         List<String> need = new ArrayList<>();
         if (!hasStepPermission()) need.add("android.permission.ACTIVITY_RECOGNITION");
+        if (checkSelfPermission("android.permission.ACCESS_COARSE_LOCATION")
+                != PackageManager.PERMISSION_GRANTED) {
+            need.add("android.permission.ACCESS_COARSE_LOCATION");
+        }
         if (Build.VERSION.SDK_INT < 29
                 && checkSelfPermission("android.permission.WRITE_EXTERNAL_STORAGE")
                    != PackageManager.PERMISSION_GRANTED) {

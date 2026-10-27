@@ -369,13 +369,12 @@ public class GardenView extends View {
         float cardH = Math.max(240 * d, Math.min(h - cardTop - 112 * d, 620 * d));
         card.set(pad, cardTop, w - pad, cardTop + cardH);
 
-        LinearGradient bgc = new LinearGradient(pad, cardTop, pad, cardTop + cardH,
-                Theme.PANEL_TOP, Theme.PANEL_BOTTOM, Shader.TileMode.CLAMP);
         r.set(card);
-        p.setStyle(Paint.Style.FILL);
-        p.setShader(bgc);
-        c.drawRoundRect(r, 26 * d, 26 * d, p);
-        p.setShader(null);
+        // Сцена внутри карточки: небо по высоте солнца, светила на своих местах,
+        // облака и осадки по реальной погоде (open-meteo). Ручная настройка главнее.
+        Weather.refreshAsync(getContext());
+        float sceneTime = (System.currentTimeMillis() % 3600000L) / 1000f;
+        DayPhase.drawBack(getContext(), c, card, 26 * d, d, sceneTime);
         st.setColor(Theme.PANEL_BORDER); st.setStrokeWidth(1 * d);
         c.drawRoundRect(r, 26 * d, 26 * d, st);
 
@@ -428,6 +427,9 @@ public class GardenView extends View {
         }
         if (cutAnim >= 0f) drawHoeStrike(c, w / 2f, plantBottom, fsize);
         if (digAnim >= 0f) drawShovelDig(c, w / 2f, plantBottom, fsize);
+
+        // осадки идут и перед цветком — иначе дождь выглядит как за стеклом
+        DayPhase.drawFront(getContext(), c, card, 26 * d, d, sceneTime);
 
         // стадии
         float dotsY = cardTop + 24 * d;

@@ -1,11 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.dsh.stepcounter"
-    android:versionCode="87"
-    android:versionName="10.3">
+    android:versionCode="90"
+    android:versionName="10.6">
 
     <!-- доступ к счётчику шагов -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+
+    <!-- реальная погода для сцены в саду: open-meteo по координатам -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <!-- постоянная работа в фоне -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -100,6 +105,14 @@
         <receiver
             android:name=".SyncReceiver"
             android:exported="false" />
+
+        <receiver
+            android:name=".UnlockReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.USER_PRESENT" />
+            </intent-filter>
+        </receiver>
 
         <receiver
             android:name=".StepWidget"

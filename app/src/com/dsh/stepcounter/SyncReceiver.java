@@ -11,15 +11,22 @@ import android.content.Intent;
  * шаги за «дыру» делятся между днями по времени, и сегодняшние теряются.
  * Будильник с setAndAllowWhileIdle пробивается через сон устройства,
  * в отличие от фоновой задачи, которую система откладывает на часы.
+ *
+ * Тот же замер вызывается из UnlockReceiver при разблокировке экрана.
  */
 public class SyncReceiver extends BroadcastReceiver {
 
     @Override
-    public void onReceive(final Context context, Intent intent) {
-        final Context app = context.getApplicationContext();
+    public void onReceive(Context context, Intent intent) {
+        Context app = context.getApplicationContext();
         // следующая побудка — сразу, не дожидаясь успеха замера
         AlarmScheduler.scheduleSync(app);
+        runOnce(app);
+    }
 
+    /** Один замер в фоне: забрать показания, проверить пропуски, обновить виджет. */
+    static void runOnce(final Context context) {
+        final Context app = context.getApplicationContext();
         new Thread(new Runnable() {
             @Override public void run() {
                 try {
@@ -31,6 +38,6 @@ public class SyncReceiver extends BroadcastReceiver {
                 } catch (Exception ignored) {
                 }
             }
-        }, "sync-alarm").start();
+        }, "sync-once").start();
     }
 }
