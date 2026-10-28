@@ -45,6 +45,29 @@ public class GardenView extends View {
         st.setStyle(Paint.Style.STROKE);
     }
 
+    // ---- небо живёт: светила двигаются, поэтому сцену обновляем раз в полминуты ----
+    private final Runnable skyTick = new Runnable() {
+        @Override public void run() {
+            if (isShown()) invalidate();
+            if (isAttachedToWindow()) postDelayed(this, 30000);
+        }
+    };
+
+    @Override protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        removeCallbacks(skyTick);
+        postDelayed(skyTick, 30000);
+    }
+
+    @Override protected void onDetachedFromWindow() {
+        removeCallbacks(skyTick);
+        super.onDetachedFromWindow();
+    }
+
+    @Override protected void onVisibilityChanged(View changed, int visibility) {
+        super.onVisibilityChanged(changed, visibility);
+        if (visibility == VISIBLE) invalidate();
+    }
     public void setGame(GameState g) { game = g; invalidate(); }
     public void setListener(Listener l) { listener = l; }
 
