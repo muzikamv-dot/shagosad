@@ -230,10 +230,18 @@ final class DayPhase {
         // при сплошной облачности (100 %) — не видно совсем
         float seeCelestial = (float) Math.max(0.0, 1.0 - Math.pow(cloud / 100.0, 1.5));
 
-        // солнце на своём настоящем месте: азимут → по горизонтали, высота → по вертикали
+        // солнце на своём настоящем месте: азимут → по горизонтали, высота → по вертикали.
+        // Клип по небу: ниже горизонта светило не рисуется, поэтому оно «садится» за край.
+        float horizonY = card.bottom - h * 0.20f;
+        long today = dayStart(stamp);
+        float sunMax = maxAltFor(today, ctx, true);
+        float moonMax = maxAltFor(today, ctx, false);
+        int skyLayer = c.save();
+        c.clipRect(card.left, card.top, card.right, horizonY);
+
         if (sun[0] > -2f && seeCelestial > 0.06f) {
             float sx = posX(card, sun[1]);
-            float sy = posY(card, sun[0]);
+            float sy = posY(card, sun[0], sun[1], sunMax);
             // диск того же размера, что у луны: их угловые размеры почти равны
             float r = 20f * d;
             int glow = (int) (0x66 * seeCelestial);
@@ -247,7 +255,7 @@ final class DayPhase {
             P.setAlpha(255);
         } else if (moon[0] > -2f && night > 0.12f && seeCelestial > 0.06f) {
             float mx = posX(card, moon[1]);
-            float my = posY(card, moon[0]);
+            float my = posY(card, moon[0], moon[1], moonMax);
             float r = 20f * d;                       // луна вдвое крупнее
             float illum = SunMoon.moonIllum(stamp);
             float phase = SunMoon.moonPhase(stamp);
@@ -264,6 +272,8 @@ final class DayPhase {
                 drawPhaseDisc(c, mx, my, r, illum, phase, 0xFFF2F5FF, alpha);
             }
         }
+
+        c.restoreToCount(skyLayer);
 
         // облака прямо из процента облачности: 0 % — чистое небо, 100 % — сплошная пелена
         int clouds = cloud < 5 ? 0 : cloud < 25 ? 1 : cloud < 50 ? 2 : cloud < 75 ? 4
@@ -293,11 +303,18 @@ final class DayPhase {
         }
         P.setAlpha(255);
 
-        // земля
-        P.setShader(new LinearGradient(card.left, card.bottom - h * 0.26f,
-                card.left, card.bottom, 0x00000000, 0x22000000, Shader.TileMode.CLAMP));
-        c.drawRect(card.left, card.bottom - h * 0.26f, card.right, card.bottom, P);
+        // земля: заметная полоса ниже горизонта, чтобы горизонт читался
+        float ground = card.bottom - h * 0.20f;
+        P.setShader(new LinearGradient(card.left, ground, card.left, card.bottom,
+                new int[]{0x00000000, 0x26000000, 0x4A000000},
+                new float[]{0f, 0.35f, 1f}, Shader.TileMode.CLAMP));
+        c.drawRect(card.left, ground, card.right, card.bottom, P);
         P.setShader(null);
+        // тонкая линия горизонта
+        P.setColor(0x1FFFFFFF);
+        P.setStrokeWidth(Math.max(1f, d));
+        c.drawLine(card.left + radius * 0.3f, ground, card.right - radius * 0.3f, ground, P);
+        P.setStrokeWidth(1f);
 
         // виньетка
         P.setShader(new RadialGradient(card.centerX(), card.centerY(),
@@ -410,17 +427,69 @@ final class DayPhase {
         P.setShader(null);
     }
 
-    /** Азимут → положение по горизонтали: восток слева, юг в центре, запад справа. */    private static float posX(RectF card, float az) {
-        float k = (az - 180f) / 90f;
-        k = Math.max(-1.15f, Math.min(1.15f, k));
-        return card.centerX() + k * card.width() * 0.40f;
+    /** Нормированный азимут: -1 (восток) .. 0 (юг) .. +1 (запад). */
+    private static float skyU(float az) {
+        float u = (az - 180f) / 90f;
+        return Math.max(-1.15f, Math.min(1.15f, u)) / 1.15f;
     }
 
-    /** Высота над горизонтом → положение по вертикали. */
-    private static float posY(RectF card, float alt) {
-        float a = Math.max(0f, Math.min(75f, alt)) / 75f;
-        return card.bottom - card.height() * (0.14f + 0.62f * a);
+    /** Горизонталь светила: раздвинута к краям, чтобы диск обходил цветок. */
+    private static float posX(RectF card, float az) {
+        return card.centerX() + skyU(az) * card.width() * 0.46f;
     }
+
+    /**
+     * Вертикаль светила. Купол идёт от горизонта у краёв к верху карточки по эллипсу
+     * (sqrt(1-u^2)), а высота поднимает диск от горизонта к этому куполу. Так путь
+     * Светило едет по куполу: положение зависит только от азимута, поэтому солнце
+     * и луна идут по одной и той же широкой дуге. В полдень (азимут 180) — у верха,
+     * на восходе и закате (края) — у горизонта.
+     */
+    private static float posY(RectF card, float alt, float az, float maxAlt) {
+        float u = skyU(az);
+        float horizon = card.bottom - card.height() * 0.20f;
+        float top = card.top + card.height() * 0.06f;
+        return horizon - (horizon - top) * (float) Math.sqrt(Math.max(0f, 1f - u * u));
+    }
+
+    // кеш: максимум за сутки считаем один раз, иначе 97 расчётов на каждый кадр
+    private static long cachedDay = -1;
+    private static float cachedSunMax = -1f;
+    private static float cachedMoonMax = -1f;
+
+    /** Максимальная высота светила за сутки — по ней и растягиваем дугу. */
+    private static float maxAltFor(long dayStart, Context ctx, boolean isSun) {
+        if (cachedDay != dayStart) {
+            cachedDay = dayStart;
+            cachedSunMax = -1f;
+            cachedMoonMax = -1f;
+        }
+        if (isSun ? cachedSunMax >= 0f : cachedMoonMax >= 0f) {
+            return isSun ? cachedSunMax : cachedMoonMax;
+        }
+        double lat = lat(ctx), lon = lon(ctx);
+        float best = 0f;
+        for (int m = 0; m <= 24 * 60; m += 15) {
+            float[] p = isSun ? SunMoon.sun(dayStart + m * 60000L, lat, lon)
+                              : SunMoon.moon(dayStart + m * 60000L, lat, lon);
+            if (p[0] > best) best = p[0];
+        }
+        if (isSun) cachedSunMax = best; else cachedMoonMax = best;
+        return best;
+    }
+
+    /** Начало текущих суток. */
+    private static long dayStart(long stamp) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTimeInMillis(stamp);
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
+        return cal.getTimeInMillis();
+    }
+
+    /** Старое отображение без нормировки — оставлено как справка. */
 
     private static int daySeed() {
         Calendar c = Calendar.getInstance();
