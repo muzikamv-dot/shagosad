@@ -70,6 +70,8 @@ public class MainActivity extends Activity {
     private Button shopButton, herbButton, bagButton, achButton;
 
     private TextView headerTime, headerSub;
+    private ScrollView eventPage;
+    private LinearLayout eventBox;
     private final android.os.Handler clockHandler =
             new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable clockTick = new Runnable() {
@@ -204,6 +206,7 @@ public class MainActivity extends Activity {
         // пропущенные дни проверяем при каждом возврате: сорняки и засыхание
         if (game.checkMissedDays(this)) game.save(this);
         refreshAll();
+        rebuildEvents();   // вкладка ивентов зависит от даты и тестового флага
         runSync();
         ui.removeCallbacks(ticker);
         ui.post(ticker);
@@ -526,6 +529,7 @@ public class MainActivity extends Activity {
         profilePage.setVisibility(index == 3 ? View.VISIBLE : View.GONE);
         achPage.setVisibility(index == 4 ? View.VISIBLE : View.GONE);
         headerTitle.setText(TITLES[index]);
+        if (index == 4) rebuildEvents();
 
         for (int i = 0; i < navItems.size(); i++) {
             boolean on = i == index;
@@ -972,30 +976,248 @@ public class MainActivity extends Activity {
      * ширины — раньше текст прилипал влево, а справа оставалась пустота.
      */
     private ScrollView buildEventsPage() {
-        ScrollView page = new ScrollView(this);
-        page.setFillViewport(true);
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setGravity(Gravity.CENTER_HORIZONTAL);
-        box.setPadding(dp(18), dp(14), dp(18), dp(24));
+        eventPage = new ScrollView(this);
+        eventPage.setFillViewport(true);
+        eventBox = new LinearLayout(this);
+        eventBox.setOrientation(LinearLayout.VERTICAL);
+        eventBox.setGravity(Gravity.CENTER_HORIZONTAL);
+        eventBox.setPadding(dp(18), dp(8), dp(18), dp(12));
+        eventPage.addView(eventBox, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        rebuildEvents();
+        return eventPage;
+    }
 
-        // лента-триколор: картинка вырезана из референса владельца
+    /** Перерисовать вкладку «Ивенты» под текущее состояние: заглушка, анонс или живой ивент. */
+    private void rebuildEvents() {
+        if (eventBox == null) return;
+        eventBox.removeAllViews();
+
+        if (Event.finished(this)) {
+            // ленту тут не показываем: она относится к прошедшему ивенту.
+            // Вместо пустоты — тихая карточка-анонс будущего события.
+            eventBox.addView(centered("СОБЫТИЯ", 10, Theme.FAINT, false, 26));
+
+            LinearLayout stub = new LinearLayout(this);
+            stub.setOrientation(LinearLayout.VERTICAL);
+            stub.setGravity(Gravity.CENTER_HORIZONTAL);
+            GradientDrawable sbg = new GradientDrawable(
+                    GradientDrawable.Orientation.TOP_BOTTOM,
+                    new int[]{Theme.SURFACE_HI, Theme.SURFACE});
+            sbg.setCornerRadius(dp(26));
+            sbg.setStroke(dp(1), Theme.CARD_STROKE);
+            stub.setBackground(sbg);
+            stub.setPadding(dp(18), dp(14), dp(18), dp(16));
+
+            // силуэт будущего цветка: намёк, а не спойлер
+            ImageView ghost = new ImageView(this);
+            int gid = getResources().getIdentifier("event_stage_20", "drawable", getPackageName());
+            if (gid != 0) ghost.setImageResource(gid);
+            ghost.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            ghost.setAlpha(0.20f);
+            stub.addView(ghost, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(210)));
+
+            TextView title = new TextView(this);
+            title.setText("НОВЫЕ ИВЕНТЫ СКОРО");
+            title.setTextColor(Theme.ACCENT_SOFT);
+            title.setTextSize(17);
+            title.setLetterSpacing(0.06f);
+            title.setGravity(Gravity.CENTER);
+            title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            tlp.topMargin = dp(6);
+            stub.addView(title, tlp);
+
+            stub.addView(centered("Следующий праздник уже готовится.\n"
+                    + "Здесь появится анонс, дата и праздничное семечко.", 12.5f,
+                    Theme.MUTED, false, 10));
+
+            stub.addView(centered("✦   ✦   ✦", 12, Theme.FAINT, false, 12));
+            stub.addView(centered("До встречи в саду", 11.5f, Theme.ACCENT_SOFT, true, 8));
+
+            LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            slp.topMargin = dp(12);
+            eventBox.addView(stub, slp);
+
+            eventBox.addView(centered("Следите за новостями", 10, Theme.FAINT, false, 14));
+            return;
+        }
+
+        if (Event.active(this)) {
+            buildActiveEvent();
+            return;
+        }
+
+        buildEventAnnounce();
+    }
+
+    /** Лента-триколор из референса. */
+    private View eventRibbon() {
         FlagRibbon ribbon = new FlagRibbon(this);
-        int rw = Math.min(dp(300), getResources().getDisplayMetrics().widthPixels - dp(48));
+        int rw = Math.min(dp(238), getResources().getDisplayMetrics().widthPixels - dp(48));
         int rh = Math.round(rw / FlagRibbon.aspect());
         LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(rw, rh);
         rlp.gravity = Gravity.CENTER_HORIZONTAL;
-        box.addView(ribbon, rlp);
+        ribbon.setLayoutParams(rlp);
+        return ribbon;
+    }
 
-        TextView headline = centered("СКОРО В ШАГОСАДЕ\nПРАЗДНИЧНОЕ СОБЫТИЕ!", 18.5f,
-                Theme.ACCENT_SOFT, true, 8);
-        box.addView(headline);
+    /** До ивента: анонс. */
+    private void buildEventAnnounce() {
+        eventBox.addView(eventRibbon());
+        eventBox.addView(centered("СКОРО В ШАГОСАДЕ\nПРАЗДНИЧНОЕ СОБЫТИЕ!", 18.5f,
+                Theme.ACCENT_SOFT, true, 10));
+        eventBox.addView(eventBadge());
+        eventBox.addView(eventAnnounceCard());
+    }
 
-        // золотой бейдж с датой — по центру, как медаль на груди
+    /** Ивент идёт: заголовок, окно выращивания, полив. */
+    private void buildActiveEvent() {
+        eventBox.addView(eventRibbon());
+        eventBox.addView(centered(Event.NAME, 18, Theme.ACCENT_SOFT, true, 6));
+        eventBox.addView(eventBadge());
+
+        // открытка уже собрана: до конца ивента — благодарность с салютом
+        if (game.eventCard) {
+            LinearLayout thanks = new LinearLayout(this);
+            thanks.setOrientation(LinearLayout.VERTICAL);
+            thanks.setGravity(Gravity.CENTER_HORIZONTAL);
+            GradientDrawable tbg = new GradientDrawable(
+                    GradientDrawable.Orientation.TOP_BOTTOM,
+                    new int[]{Theme.SURFACE_HI, Theme.SURFACE});
+            tbg.setCornerRadius(dp(26));
+            tbg.setStroke(dp(1), Theme.GOLD);
+            thanks.setBackground(tbg);
+            thanks.setPadding(dp(16), dp(10), dp(16), dp(14));
+
+            AchievementActivity.Fireworks fw = new AchievementActivity.Fireworks(this, Theme.GOLD);
+            thanks.addView(fw, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(210)));
+
+            thanks.addView(centered("Спасибо за участие!", 17, Theme.GOLD, true, 4));
+            thanks.addView(centered("Праздничный цветок уже в коллекции — раздел «ИЗ ИВЕНТОВ».\n"
+                    + "Салют в вашу честь!", 12, Theme.MUTED, false, 8));
+
+            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            tlp.topMargin = dp(14);
+            eventBox.addView(thanks, tlp);
+            return;
+        }
+
+        // карточка-окно выращивания
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER_HORIZONTAL);
+        GradientDrawable bg = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{Theme.SURFACE_HI, Theme.SURFACE});
+        bg.setCornerRadius(dp(26));
+        bg.setStroke(dp(1), Theme.CARD_STROKE);
+        card.setBackground(bg);
+        card.setPadding(dp(14), dp(10), dp(14), dp(12));
+
+        int stage = Math.max(0, Math.min(Event.STAGES, game.eventStage));
+        // до первого полива — первый кадр (семечко), каждый полив сдвигает картинку на один
+        int art = Math.max(1, Math.min(Event.STAGES, stage + 1));
+
+        ImageView plant = new ImageView(this);
+        try {
+            int rid = getResources().getIdentifier(
+                    String.format(Locale.US, "event_stage_%02d", art), "drawable", getPackageName());
+            if (rid != 0) plant.setImageResource(rid);
+        } catch (Exception ignored) { }
+        plant.setAdjustViewBounds(false);
+        // FIT_END: растение стоит на нижней линии поля, а растёт вверх
+        // FIT_CENTER: кадр центрирован по цветку, поэтому растение стоит ровно по центру
+        plant.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(250));
+        card.addView(plant, plp);
+
+        // точки стадий: 20 штук
+        LinearLayout dots = new LinearLayout(this);
+        dots.setOrientation(LinearLayout.HORIZONTAL);
+        dots.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        dlp.topMargin = dp(8);
+        for (int i = 0; i < Event.STAGES; i++) {
+            View dot = new View(this);
+            GradientDrawable dg = new GradientDrawable();
+            dg.setShape(GradientDrawable.OVAL);
+            dg.setColor(i < stage ? Theme.ACCENT : Theme.STROKE);
+            dot.setBackground(dg);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(6), dp(6));
+            lp.rightMargin = dp(4);
+            dots.addView(dot, lp);
+        }
+        card.addView(dots, dlp);
+
+        // без семечка подпись не нужна: то же написано на кнопке
+        if (game.eventSeed) {
+            TextView status = centered(stage >= Event.STAGES ? "Цветок расцвёл"
+                            : "Поливов: " + stage + " из " + Event.STAGES,
+                    11.5f, Theme.MUTED, false, 10);
+            card.addView(status);
+        }
+
+        // кнопка: получить семечко → полить → собрать
+        Button action = new Button(this);
+        action.setAllCaps(false);
+        action.setTextSize(14f);
+        GradientDrawable abg = new GradientDrawable();
+        abg.setCornerRadius(dp(24));
+        action.setBackground(abg);
+
+        if (stage >= Event.STAGES) {
+            action.setText("Собрать открытку");
+            abg.setColor(Theme.GOLD);
+            action.setTextColor(0xFF2A1E00);
+            action.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { collectEventCard(); }
+            });
+            action.setEnabled(true);
+        } else if (!game.eventSeed) {
+            action.setText("Семечко в магазине");
+            abg.setColor(Theme.SURFACE);
+            action.setTextColor(Theme.MUTED);
+            action.setEnabled(false);
+        } else {
+            boolean can = game.water > 0;
+            action.setText(can ? "Полить · лейка (" + game.water + ")"
+                    : "Нужна вода · пройди " + Ui.steps(game.waterToNext()) + " шагов");
+            abg.setColor(can ? Theme.ACCENT : Theme.SURFACE);
+            action.setTextColor(can ? Theme.ON_ACCENT : Theme.MUTED);
+            action.setEnabled(can);
+            action.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { waterEventPlant(); }
+            });
+        }
+        LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
+        alp.topMargin = dp(10);
+        card.addView(action, alp);
+
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        clp.topMargin = dp(10);
+        eventBox.addView(card, clp);
+
+        TextView hint = centered("Полив тратит обычную лейку — ту же, что и для цветка в саду.\n"
+                + "Выбирайте, что полить.", 10.5f, Theme.FAINT, false, 8);
+        eventBox.addView(hint);
+    }
+
+    /** Золотой бейдж с датой ивента. */
+    private TextView eventBadge() {
         TextView badge = new TextView(this);
-        badge.setText("4 НОЯБРЯ · ДЕНЬ НАРОДНОГО ЕДИНСТВА");
+        badge.setText(Event.WHEN);
         badge.setTextColor(Theme.GOLD);
-        badge.setTextSize(9f);
+        badge.setTextSize(9.5f);
         badge.setLetterSpacing(0.08f);
         badge.setGravity(Gravity.CENTER);
         badge.setIncludeFontPadding(false);
@@ -1004,49 +1226,115 @@ public class MainActivity extends Activity {
         pill.setCornerRadius(dp(20));
         pill.setStroke(dp(1), Theme.GOLD);
         badge.setBackground(pill);
-        badge.setPadding(dp(14), dp(8), dp(14), dp(8));
+        badge.setPadding(dp(16), dp(9), dp(16), dp(9));
         LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        blp.topMargin = dp(6);
-        box.addView(badge, blp);
+        blp.topMargin = dp(8);
+        badge.setLayoutParams(blp);
+        return badge;
+    }
 
-        // карточка с самим текстом: тёплый градиент, чтобы читалось как открытка
+    /** Анонс до начала ивента (прежний текст). */
+    private View eventAnnounceCard() {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setGravity(Gravity.CENTER_HORIZONTAL);
-        GradientDrawable cardBg = new GradientDrawable(
+        GradientDrawable bg = new GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
                 new int[]{Theme.SURFACE_HI, Theme.SURFACE});
-        cardBg.setCornerRadius(dp(26));
-        cardBg.setStroke(dp(1), Theme.CARD_STROKE);
-        card.setBackground(cardBg);
+        bg.setCornerRadius(dp(26));
+        bg.setStroke(dp(1), Theme.CARD_STROKE);
+        card.setBackground(bg);
         card.setPadding(dp(16), dp(14), dp(16), dp(14));
 
         card.addView(centered("В честь Дня народного единства,\nкоторый отмечается 4 ноября,\n"
                 + "в ШагоСаде готовится особенный сюрприз!", 13.5f, Theme.TEXT, false, 0));
-        card.addView(centered("Совсем скоро в игровом магазине\nпоявится уникальное праздничное семечко, "
-                + "которое можно будет приобрести и вырастить.", 12.5f, Theme.MUTED, false, 11));
-        card.addView(centered("Что же вырастет из этого необычного семечка?\nКакой сюрприз оно приготовило?",
-                13.5f, Theme.MUTED, false, 12));
-        card.addView(centered("Следите за новостями и готовьте грядки —\nпраздничное событие уже близко!",
-                13.5f, Theme.MUTED, false, 12));
-
-        // разделитель из звёздочек — вместо пустого места справа
-        TextView stars = centered("✦   ✦   ✦", 12, Theme.FAINT, false, 11);
-        card.addView(stars);
-
-        TextView finalLine = centered("День народного единства в ШагоСаде.\nСкоро в игре!", 15,
-                Theme.ACCENT_SOFT, true, 12);
-        card.addView(finalLine);
+        card.addView(centered("В праздничные дни в магазине появится бесплатное семечко, "
+                + "из которого вырастет уникальный цветок.", 12.5f, Theme.MUTED, false, 11));
+        card.addView(centered("Следите за новостями и готовьте грядки —\n"
+                + "праздничное событие уже близко!", 12.5f, Theme.MUTED, false, 10));
+        card.addView(centered("✦   ✦   ✦", 12, Theme.FAINT, false, 11));
+        card.addView(centered("День народного единства.\nСкоро в игре!", 14,
+                Theme.ACCENT_SOFT, true, 10));
 
         LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        clp.topMargin = dp(12);
-        box.addView(card, clp);
+        clp.topMargin = dp(10);
+        card.setLayoutParams(clp);
+        return card;
+    }
 
-        page.addView(box, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        return page;
+    /** Полить ивентовое растение: тратит одну обычную лейку. */
+    private void waterEventPlant() {
+        // через общий метод: тратит лейку, даёт очки и серию, как обычный полив
+        if (!game.waterEvent(Steps.today())) return;
+        game.save(this);
+        rebuildEvents();
+        refreshAll();
+        if (game.eventStage >= Event.STAGES) {
+            Toast.makeText(this, "Праздничный цветок расцвёл!", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** Собрать праздничную открытку: она уходит в коллекцию, окно закрывается. */
+    private void collectEventCard() {
+        game.eventCard = true;
+        game.eventStage = 0;
+        game.eventSeed = false;
+        game.save(this);
+        rebuildEvents();
+        refreshAll();
+
+        // превью открытки — как в коллекции: картинка, подпись, «Сохранить в галерею»
+        final GameState.Card card = GameState.holidayCard();
+        new Thread(new Runnable() {
+            @Override public void run() {
+                final Bitmap bmp = Postcard.render(MainActivity.this, card);
+                runOnUiThread(new Runnable() {
+                    @Override public void run() { showEventCard(card, bmp); }
+                });
+            }
+        }).start();
+    }
+
+    /** Диалог с превью праздничной открытки: тот же вид, что у обычной карточки. */
+    private void showEventCard(final GameState.Card card, final Bitmap bmp) {
+        if (bmp == null || isFinishing()) return;
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(12), dp(12), dp(12), dp(4));
+
+        ImageView iv = new ImageView(this);
+        iv.setImageBitmap(bmp);
+        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        int h = (int) (getResources().getDisplayMetrics().heightPixels * 0.55f);
+        box.addView(iv, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, h));
+
+        TextView caption = new TextView(this);
+        caption.setText("Праздничная открытка · уже в коллекции");
+        caption.setTextColor(Theme.TEXT);
+        caption.setTextSize(13);
+        caption.setGravity(Gravity.CENTER);
+        caption.setPadding(0, dp(8), 0, 0);
+        box.addView(caption);
+
+        new AlertDialog.Builder(this)
+                .setTitle("С праздником!")
+                .setView(box)
+                .setPositiveButton("Сохранить в галерею", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        final boolean ok = Postcard.saveToGallery(MainActivity.this, bmp,
+                                "ШагоСад-День-народного-единства");
+                        Toast.makeText(MainActivity.this,
+                                ok ? "Сохранено: Pictures/Сад/ШагоСад-День-народного-единства.png"
+                                        : "Не удалось сохранить",
+                                Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton("Закрыть", null)
+                .show();
     }
 
     /** Текст по центру с одинаковым верхним отступом — чтобы блок был симметричным. */

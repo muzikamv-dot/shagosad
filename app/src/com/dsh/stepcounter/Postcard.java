@@ -6,6 +6,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.provider.MediaStore;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
@@ -34,6 +35,8 @@ public final class Postcard {
     private Postcard() { }
 
     public static Bitmap render(Context ctx, GameState.Card card) {
+        // праздничная открытка идёт по тому же шаблону, что коллекционные
+        boolean ev = card != null && card.species < 0;
         Bitmap out = Bitmap.createBitmap(W * SCALE, H * SCALE, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(out);
         c.scale(SCALE, SCALE);
@@ -104,14 +107,14 @@ public final class Postcard {
         t.setLetterSpacing(0.35f);
         t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         t.setTextAlign(Paint.Align.LEFT);
-        c.drawText("ГЕРБАРИЙ", 96, 108, t);
+        c.drawText(ev ? "ПРАЗДНИЧНАЯ КОЛЛЕКЦИЯ" : "ГЕРБАРИЙ", 96, 108, t);
 
         // номер — золотом, как на коллекционной карточке
         t.setTextAlign(Paint.Align.RIGHT);
         t.setTextSize(26);
         t.setLetterSpacing(0.18f);
         t.setColor(gold);
-        c.drawText("№ " + card.seed, W - 96, 108, t);
+        c.drawText(ev ? Event.WHEN.toUpperCase() : "№ " + card.seed, W - 96, 108, t);
 
         Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
         line.setStrokeWidth(1f);
@@ -126,7 +129,30 @@ public final class Postcard {
 
         // цветок — та же параметрическая модель, что и в саду,
         // иначе сад и гербарий показывали бы разные растения
-        KawaiiPlant.draw(c, card.species, 10, W / 2f, 900, 700, 0f, 0.35f);
+        if (ev) {
+            // лента-триколор над цветком
+            try {
+                Bitmap ribbon = BitmapFactory.decodeResource(ctx.getResources(), R.drawable.event_ribbon);
+                if (ribbon != null) {
+                    float rw = 600f;
+                    float rh = rw * ribbon.getHeight() / ribbon.getWidth();
+                    float lx = W / 2f - rw / 2f;
+                    c.drawBitmap(ribbon, null, new RectF(lx, 236f, lx + rw, 236f + rh), p);
+                }
+            } catch (Exception ignored) { }
+            // сам праздничный цветок
+            try {
+                Bitmap flower = BitmapFactory.decodeResource(ctx.getResources(), R.drawable.event_stage_20);
+                if (flower != null) {
+                    float fh = 470f;
+                    float fw = fh * flower.getWidth() / flower.getHeight();
+                    float lx = W / 2f - fw / 2f;
+                    c.drawBitmap(flower, null, new RectF(lx, 900f - fh, lx + fw, 900f), p);
+                }
+            } catch (Exception ignored) { }
+        } else {
+            KawaiiPlant.draw(c, card.species, 10, W / 2f, 900, 700, 0f, 0.35f);
+        }
 
         // орнамент
         float oy = 940;
@@ -187,7 +213,7 @@ public final class Postcard {
         t.setTextSize(20);
         t.setLetterSpacing(0.15f);
         t.setColor(Color.HSVToColor(new float[]{hue, 0.12f, 0.68f}));
-        c.drawText("ШАГОСАД · " + card.seed + " ИЗ 365", W / 2f, H - 88, t);
+        c.drawText(ev ? "ШАГОСАД · ПРАЗДНИЧНЫЙ ИВЕНТ" : "ШАГОСАД · " + card.seed + " ИЗ 365", W / 2f, H - 88, t);
 
         return out;
     }
@@ -287,5 +313,12 @@ public final class Postcard {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /** Сохранить готовую открытку в галерею телефона. true — получилось. */
+    public static boolean saveToGallery(Context ctx, Bitmap bmp, String name) {
+        if (bmp == null) return false;
+        return save(ctx, bmp, name) != null;
+
     }
 }

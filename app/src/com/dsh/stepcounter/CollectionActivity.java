@@ -158,6 +158,25 @@ public class CollectionActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         slp.topMargin = dp(8);
         for (int i = 0; i < 4; i++) {
+            // первый слот — праздничный цветок, если открытка уже получена
+            if (i == 0 && game.eventCard) {
+                ImageView got = new ImageView(this);
+                int rid = getResources().getIdentifier("event_stage_20", "drawable", getPackageName());
+                if (rid != 0) got.setImageResource(rid);
+                got.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                GradientDrawable gold = new GradientDrawable();
+                gold.setColor(Theme.SURFACE_HI);
+                gold.setCornerRadius(dp(16));
+                gold.setStroke(dp(1), Theme.GOLD);
+                got.setBackground(gold);
+                got.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) { openEventCard(); }
+                });
+                got.setPadding(dp(6), dp(6), dp(6), dp(6));
+                slots.addView(got, new LinearLayout.LayoutParams(0, dp(104), 1f));
+                continue;
+            }
+
             TextView slot = new TextView(this);
             slot.setText("✿");
             slot.setTextSize(20);
@@ -169,7 +188,7 @@ public class CollectionActivity extends Activity {
             empty.setCornerRadius(dp(16));
             empty.setStroke(dp(1), Theme.CARD_STROKE);
             slot.setBackground(empty);
-            LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(0, dp(54), 1f);
+            LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(0, dp(104), 1f);
             if (i > 0) ilp.leftMargin = dp(10);
             slots.addView(slot, ilp);
         }
@@ -215,6 +234,19 @@ public class CollectionActivity extends Activity {
         grid.setData(owned, mode);
         int n = owned.size();
         countView.setText("собрано " + n + " из " + Species.COUNT);
+    }
+
+    /** Праздничная открытка: рисуем ту же, что в коллекции, но по своему шаблону. */
+    private void openEventCard() {
+        final GameState.Card card = GameState.holidayCard();
+        new Thread(new Runnable() {
+            @Override public void run() {
+                final Bitmap bmp = Postcard.render(CollectionActivity.this, card);
+                ui.post(new Runnable() {
+                    @Override public void run() { showCard(card, bmp); }
+                });
+            }
+        }).start();
     }
 
     /** Показать открытку собранного вида. Поиск — по номеру вида. */

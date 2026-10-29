@@ -34,6 +34,11 @@ public class GameState {
     public boolean wasReset = false;
 
     public int water = 0;
+
+    // ---- праздничный ивент: своё растение, одна попытка на игрока ----
+    public boolean eventSeed = false;
+    public int eventStage = 0;
+    public boolean eventCard = false;
     public int points = 0;
     /** Сколько очков заработано за всё время: от этого считается уровень, покупки его не снижают. */
     public int earned = 0;
@@ -85,11 +90,17 @@ public class GameState {
     public static final class Card {
         public int seed, species;
         public String name, date, wish;
-        public Card() { }
+    public Card() { }
         public Card(int seed, int species, String name, String date, String wish) {
             this.seed = seed; this.species = species;
             this.name = name; this.date = date; this.wish = wish;
         }
+    }
+
+    /** Открытка праздничного ивента: отдельный «вид» с номером −1. */
+    public static Card holidayCard() {
+        return new Card(-1, -1, Event.NAME, Steps.today(),
+                "С Днём народного единства! Пусть в саду и в жизни будет мир, тепло и много цветов.");
     }
 
     public int[] stage = new int[PLOTS];
@@ -140,6 +151,9 @@ public class GameState {
             g.neglect = o.optInt("neglect", 0);
             g.weeds = o.optInt("weeds", 0);
             g.withered = o.optBoolean("withered", false);
+        g.eventSeed = o.optBoolean("evSeed", false);
+        g.eventStage = o.optInt("evStage", 0);
+        g.eventCard = o.optBoolean("evCard", false);
             g.hoes = o.optInt("hoes", 0);
             g.shovels = o.optInt("shovels", 0);
             g.checkDay = o.optString("checkDay", "");
@@ -270,6 +284,9 @@ public class GameState {
         bloomed.clear();
         unlocked.clear();
         cards.clear();
+        eventSeed = false;
+        eventStage = 0;
+        eventCard = false;
         stage[0] = 0;
         species[0] = 0;
         totalSteps = 0;
@@ -408,6 +425,9 @@ public class GameState {
         try {
             JSONObject o = new JSONObject();
             o.put("water", water);
+        o.put("evSeed", eventSeed);
+        o.put("evStage", eventStage);
+        o.put("evCard", eventCard);
             o.put("points", points);
             o.put("earned", earned);
             o.put("neglect", neglect);
@@ -735,6 +755,32 @@ public class GameState {
         return 0;
     }
 
+    /**
+     * Полив праздничного растения. Считается так же, как обычный полив грядки:
+     * тратит лейку, даёт очки, идёт в счётчики и в серию дней, — но растит
+     * отдельное ивентовое растение, не трогая цветок в саду.
+     */
+    public boolean waterEvent(String today) {
+        if (!eventSeed) return false;
+        if (water <= 0) return false;
+        if (eventStage >= Event.STAGES) return false;
+
+        water--;
+        eventStage++;
+        earn(10);
+        wateredTotal++;
+        wateredToday++;
+
+        if (!today.equals(lastWaterDay)) {
+            int yesterday = dayNumber(today) - 1;
+            streak = dayNumber(lastWaterDay) == yesterday ? streak + 1 : 1;
+            lastWaterDay = today;
+            if (streak > bestStreak) bestStreak = streak;
+        }
+        questsClaimed();
+        return true;
+    }
+
     public boolean waterPlot(int index, String today) {
         if (index < 0 || index >= PLOTS) return false;
         if (plotBlocked()) return false;   // сорняки или засохший цветок
@@ -762,3 +808,4 @@ public class GameState {
         return new ArrayList<>(bloomed);
     }
 }
+

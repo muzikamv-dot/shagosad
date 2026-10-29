@@ -330,11 +330,108 @@ public class ShopActivity extends Activity {
     }
 
     private void fillSeeds() {
+        // праздничное семечко: только во время ивента и только один раз
+        if (Event.active(this) && !game.eventSeed && !game.eventCard) {
+            list.addView(eventSeedCard());
+        }
+
         list.addView(noteCard("Семена в разработке",
                 "Здесь можно будет купить семя конкретного вида, чтобы вырастить цветок, "
                         + "которого ещё нет в коллекции, вместо случайного."));
         list.addView(soonCard("Семя редкого вида", "выбрать, какой цветок растить"));
         list.addView(soonCard("Набор на неделю", "несколько семян со скидкой"));
+    }
+
+    /** Бесплатное праздничное семечко на время ивента. */
+    private View eventSeedCard() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(16), dp(14), dp(16), dp(14));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(22));
+        bg.setColor(Theme.SURFACE_HI);
+        bg.setStroke(dp(1), Theme.GOLD);
+        box.setBackground(bg);
+
+        // верхняя часть: иконка семечка слева, тексты справа
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(android.view.Gravity.CENTER_VERTICAL);
+
+        ImageView icon = new ImageView(this);
+        int rid = getResources().getIdentifier("event_stage_01", "drawable", getPackageName());
+        if (rid != 0) icon.setImageResource(rid);
+        icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        GradientDrawable ico = new GradientDrawable();
+        ico.setColor(Theme.SURFACE);
+        ico.setCornerRadius(dp(16));
+        ico.setStroke(dp(1), Theme.CARD_STROKE);
+        icon.setBackground(ico);
+        icon.setPadding(dp(4), dp(4), dp(4), dp(4));
+        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(dp(76), dp(76));
+        ilp.rightMargin = dp(12);
+        head.addView(icon, ilp);
+
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+
+        TextView t = new TextView(this);
+        t.setText("Праздничное семечко · бесплатно");
+        t.setTextColor(Theme.GOLD);
+        t.setTextSize(13.5f);
+        t.setTypeface(Ui.medium());
+        texts.addView(t);
+
+        TextView d = new TextView(this);
+        d.setText(Event.NAME + " · " + Event.WHEN);
+        d.setTextColor(Theme.MUTED);
+        d.setTextSize(11f);
+        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        dlp.topMargin = dp(3);
+        texts.addView(d, dlp);
+
+        head.addView(texts, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        box.addView(head);
+
+        TextView about = new TextView(this);
+        about.setText("Уникальный цветок из 20 стадий. Растёт на вкладке «Ивенты», "
+                + "поливается обычными лейками. Одно на игрока.");
+        about.setTextColor(Theme.MUTED);
+        about.setTextSize(11f);
+        about.setLineSpacing(dp(3), 1f);
+        LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        alp.topMargin = dp(10);
+        box.addView(about, alp);
+
+
+        Button take = new Button(this);
+        take.setText("Получить");
+        take.setAllCaps(false);
+        take.setTextSize(13f);
+        take.setTextColor(Theme.ON_ACCENT);
+        GradientDrawable bbg = new GradientDrawable();
+        bbg.setColor(Theme.ACCENT);
+        bbg.setCornerRadius(dp(20));
+        take.setBackground(bbg);
+        take.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                game.eventSeed = true;
+                game.eventStage = 0;
+                game.save(ShopActivity.this);
+                Toast.makeText(ShopActivity.this,
+                        "Семечко у вас: растить его можно на вкладке «Ивенты»",
+                        Toast.LENGTH_LONG).show();
+                selectTab(tab);
+            }
+        });
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
+        blp.topMargin = dp(12);
+        box.addView(take, blp);
+        return box;
     }
 
     /** Карточка-пояснение. */

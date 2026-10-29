@@ -331,7 +331,7 @@ public class AchievementActivity extends Activity {
      * Праздничный салют: залпы трёх видов (кольцо, звезда, «ива»), следы частиц,
      * золотая пыль и белые искры. Яркость взята выше, чем в первой версии.
      */
-    private static final class Fireworks extends View {
+    static final class Fireworks extends View {
 
         private static final int[] PALETTE = {
                 0xFFFFFFFF, 0xFFFFD166, 0xFFFF8FB1, 0xFF8FE3FF, 0xFFB6FF8F, 0xFFFFB86B

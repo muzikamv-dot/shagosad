@@ -836,7 +836,8 @@ public class SettingsActivity extends Activity {
         }
     }
 
-    private void runDiag() {        diagView.setText("Опрашиваю датчик…");
+    private void runDiag() {
+        diagView.setText("Опрашиваю датчик…");
         new Thread(new Runnable() {
             @Override public void run() {
                 final SensorSync.Result r = SensorSync.sync(SettingsActivity.this);
