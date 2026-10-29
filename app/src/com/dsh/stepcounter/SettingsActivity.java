@@ -482,6 +482,10 @@ public class SettingsActivity extends Activity {
         // Открыть меню разработчика обычной кнопкой: семь тапов по версии остались,
         // но это уже не единственный вход — владелец попросил нормальную кнопку.
         final Button devMenu = row("Меню разработчика: открыть");
+        // Меню разработчика показываем только для сборок «не из магазина»:
+        // на телефоне владельца (adb) оно есть всегда, а в RuStore у обычных
+        // пользователей и модерации кнопки не будет.
+        if (installedFromStore()) devMenu.setVisibility(View.GONE);
         devMenu.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 boolean open = testBox.getVisibility() != View.VISIBLE;
@@ -836,6 +840,25 @@ public class SettingsActivity extends Activity {
         }
     }
 
+    /**
+     * Установлено ли приложение из магазина (RuStore, Google Play и подобные).
+     * При сайдлоаде через adb установщика нет — значит это сборка для разработки,
+     * и меню разработчика можно показывать.
+     */
+    private boolean installedFromStore() {
+        if (android.os.Build.VERSION.SDK_INT < 30) return false;
+        try {
+            String installer = getPackageManager()
+                    .getInstallSourceInfo(getPackageName())
+                    .getInstallingPackageName();
+            if (installer == null) return false;
+            String p = installer.toLowerCase();
+            return p.contains("rustore") || p.contains("store") || p.contains("vending")
+                    || p.contains("huawei") || p.contains("samsung");
+        } catch (Exception e) {
+            return false;
+        }
+    }
     private void runDiag() {
         diagView.setText("Опрашиваю датчик…");
         new Thread(new Runnable() {
