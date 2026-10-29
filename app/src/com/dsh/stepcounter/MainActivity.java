@@ -68,6 +68,16 @@ public class MainActivity extends Activity {
     private Button goalButton;
     private LinearLayout medalRow;
     private Button shopButton, herbButton, bagButton, achButton;
+
+    private TextView headerTime, headerSub;
+    private final android.os.Handler clockHandler =
+            new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable clockTick = new Runnable() {
+        @Override public void run() {
+            updateClock();
+            clockHandler.postDelayed(this, 20000);
+        }
+    };
     private Bitmap avatarBitmap;
     private ScrollView achPage;
 
@@ -197,11 +207,16 @@ public class MainActivity extends Activity {
         runSync();
         ui.removeCallbacks(ticker);
         ui.post(ticker);
+        // часы в шапке: обновляем время, дату и город
+        updateClock();
+        clockHandler.removeCallbacks(clockTick);
+        clockHandler.postDelayed(clockTick, 20000);
     }
 
     @Override
     protected void onPause() {
         resumed = false;
+        clockHandler.removeCallbacks(clockTick);
         ui.removeCallbacks(ticker);
         super.onPause();
     }
@@ -257,11 +272,28 @@ public class MainActivity extends Activity {
         header.addView(headerTitle, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView date = new TextView(this);
-        date.setText(new SimpleDateFormat("d MMMM", new Locale("ru")).format(new Date()));
-        date.setTextColor(Theme.MUTED);
-        date.setTextSize(13);
-        header.addView(date);
+        // Шапка справа: время, под ним дата и город (город приходит из погоды).
+        LinearLayout when = new LinearLayout(this);
+        when.setOrientation(LinearLayout.VERTICAL);
+        when.setGravity(Gravity.END);
+
+        headerTime = new TextView(this);
+        headerTime.setTextColor(Theme.ACCENT_SOFT);
+        headerTime.setTextSize(15);
+        headerTime.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        headerTime.setGravity(Gravity.END);
+        when.addView(headerTime);
+
+        headerSub = new TextView(this);
+        headerSub.setTextColor(Theme.MUTED);
+        headerSub.setTextSize(10.5f);
+        headerSub.setGravity(Gravity.END);
+        headerSub.setMaxLines(1);
+        headerSub.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        when.addView(headerSub);
+
+        header.addView(when);
+        updateClock();
 
         GearView gear = new GearView(this);
         gear.setOnClickListener(new View.OnClickListener() {
@@ -400,6 +432,16 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(70)));
 
         return root;
+    }
+
+    /** Время, дата и город в шапке. Город берём из погоды, если он уже известен. */
+    private void updateClock() {
+        if (headerTime == null) return;
+        Date now = new Date();
+        headerTime.setText(new SimpleDateFormat("HH:mm", new Locale("ru")).format(now));
+        String date = new SimpleDateFormat("d MMMM", new Locale("ru")).format(now);
+        String city = Weather.city(this);
+        headerSub.setText(city.isEmpty() ? date : date + " · " + city);
     }
 
     /** Открыть магазин сразу на вкладке «Инструменты». */
@@ -844,7 +886,8 @@ public class MainActivity extends Activity {
     }
 
     private void updateHistory(int steps) {
-        java.util.LinkedHashMap<String, Integer> days = Steps.dailySteps(this);
+        // график: сохранённые дневные итоги + журнал (журнал главнее)
+        java.util.LinkedHashMap<String, Integer> days = Steps.mergedDays(this);
         String today = Steps.today();
         days.put(today, Math.max(steps, days.containsKey(today) ? days.get(today) : 0));
 
@@ -1789,3 +1832,4 @@ public class MainActivity extends Activity {
         refreshAll();
     }
 }
+

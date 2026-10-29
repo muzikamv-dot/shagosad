@@ -109,8 +109,15 @@ final class SensorSync {
         sb.append("\nПолучено за сеанс: ").append(events.size()).append(", новых: ").append(saved);
         sb.append("\nРазрешение ACTIVITY_RECOGNITION: ")
           .append(hasActivityPermission(ctx) ? "есть" : "нет");
-        sb.append("\nЗамер: ").append(new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
+        sb.append("\\nЗамер: ").append(new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
                 .format(new java.util.Date()));
+        // время телефона и пояс: по ним видно, «прыгало» ли время у пользователя
+        java.util.TimeZone tz = java.util.TimeZone.getDefault();
+        sb.append("\\nДата: ").append(Steps.today())
+          .append(", пояс ").append(tz.getID())
+          .append(" (").append(tz.getOffset(System.currentTimeMillis()) / 60000).append(" мин)");
+        String note = Steps.clockNote(ctx);
+        if (note.length() > 0) sb.append("\\nВнимание: ").append(note);
         r.diag = sb.toString();
         android.util.Log.i("SensorSync", "событий " + events.size() + ", записано " + saved
                 + ", батчинг " + (fifoMax > 0 ? "да" : "нет") + ", raw " + r.raw);

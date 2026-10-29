@@ -39,6 +39,7 @@ final class Weather {
     static final String K_LON = "w_lon";
     static final String K_NOTE = "w_note";
     static final String K_SRC = "w_src";
+    static final String K_CITY = "w_city";
 
     /** Как часто ходим в сеть. Погода не меняется каждую минуту. */
     static final long FRESH_MS = 20 * 60 * 1000L;
@@ -63,6 +64,23 @@ final class Weather {
     static float snow(Context ctx) { return Steps.prefs(ctx).getFloat(K_SNOW, 0f); }
     static String note(Context ctx) { return Steps.prefs(ctx).getString(K_NOTE, ""); }
     static String source(Context ctx) { return Steps.prefs(ctx).getString(K_SRC, ""); }
+
+    /** Название населённого пункта рядом с координатами (кэш). */
+    static String city(Context ctx) {
+        String c = Steps.prefs(ctx).getString(K_CITY, "");
+        // старый кеш мог сохранить координаты вместо названия — такой не показываем
+        return looksLikePlace(c) ? c : "";
+    }
+
+    /** Похоже ли на название места: есть буквы и это не «55.75,37.61». */
+    private static boolean looksLikePlace(String s) {
+        if (s == null) return false;
+        String t = s.trim();
+        if (t.isEmpty() || t.length() > 40) return false;
+        if (t.matches("[-+]?\\\\d+([.,]\\\\d+)?\\\\s*[,;]\\\\s*[-+]?\\\\d+([.,]\\\\d+)?")) return false;
+        for (int i = 0; i < t.length(); i++) if (Character.isLetter(t.charAt(i))) return true;
+        return false;
+    }
 
     // ---------------- координаты ----------------
 
@@ -180,6 +198,9 @@ final class Weather {
                     .getOffset(System.currentTimeMillis()) / 3600000f * 15f;
         }
 
+        // название места нужно для шапки: если ещё не знаем — заберём отдельно
+        fetchCityOnly(ctx, lat, lon);
+
         if (fetchMetNo(ctx, lat, lon)) return true;
         if (fetchWttr(ctx, lat, lon)) return true;
         if (fetchOpenMeteo(ctx, lat, lon)) return true;
@@ -268,10 +289,42 @@ final class Weather {
      * ~200 КБ и отдаётся десятки секунд), а компактную строку формата —
      * она приходит за полсекунды: «Overcast|+6°C|0.0mm».
      */
+    /** Название места через системный геокодер: локальное, в языке телефона. */
+    private static boolean fetchCityGeocoder(Context ctx, float lat, float lon) {
+        try {
+            if (!android.location.Geocoder.isPresent()) return false;
+            android.location.Geocoder g =
+                    new android.location.Geocoder(ctx, java.util.Locale.getDefault());
+            java.util.List<android.location.Address> list = g.getFromLocation(lat, lon, 1);
+            if (list == null || list.isEmpty()) return false;
+            android.location.Address a = list.get(0);
+            String name = a.getLocality();
+            if (name == null || name.trim().isEmpty()) name = a.getSubAdminArea();
+            if (name == null || name.trim().isEmpty()) name = a.getAdminArea();
+            if (looksLikePlace(name)) {
+                Steps.prefs(ctx).edit().putString(K_CITY, name.trim()).apply();
+                return true;
+            }
+        } catch (Exception ignored) { }
+        return false;
+    }
+
+    /** Название места: сначала геокодер, потом лёгкий запрос к wttr. */
+    private static void fetchCityOnly(Context ctx, float lat, float lon) {
+        if (city(ctx).length() > 0) return;
+        try {
+            String url = String.format(Locale.US, "https://wttr.in/%.4f,%.4f?format=%%l", lat, lon);
+            String body = get(url, "curl/8.5.0").trim();
+            if (body.length() > 0 && body.length() < 64 && !body.startsWith("<")) {
+                Steps.prefs(ctx).edit().putString(K_CITY, body).apply();
+            }
+        } catch (Exception ignored) { }
+    }
+
     private static boolean fetchWttr(Context ctx, float lat, float lon) {
         try {
             String url = String.format(Locale.US,
-                    "https://wttr.in/%.4f,%.4f?format=%%C|%%t|%%p", lat, lon);
+                    "https://wttr.in/%.4f,%.4f?format=%%l|%%C|%%t|%%p", lat, lon);
             String body = get(url, "curl/8.5.0").trim();
             if (body.length() == 0 || body.startsWith("<")) {
                 note(ctx, "wttr: пустой ответ");
@@ -279,16 +332,20 @@ final class Weather {
             }
 
             String[] parts = body.split("\\|");
-            String cond = parts.length > 0 ? parts[0] : "";
+            String place = parts.length > 0 ? parts[0].trim() : "";
+            String cond = parts.length > 1 ? parts[1] : "";
             float temp = Float.NaN;
             float prec = 0f;
-            if (parts.length > 1) {
-                String t = parts[1].replace("°C", "").replace("°F", "").replace("+", "").trim();
+            if (parts.length > 2) {
+                String t = parts[2].replace("°C", "").replace("°F", "").replace("+", "").trim();
                 try { temp = Float.parseFloat(t); } catch (Exception ignored) { }
             }
-            if (parts.length > 2) {
-                String p = parts[2].replace("mm", "").replace("in", "").trim();
+            if (parts.length > 3) {
+                String p = parts[3].replace("mm", "").replace("in", "").trim();
                 try { prec = Float.parseFloat(p); } catch (Exception ignored) { }
+            }
+            if (place.length() > 0) {
+                Steps.prefs(ctx).edit().putString(K_CITY, place).apply();
             }
 
             int code = codeFromCondition(cond, prec);
@@ -437,3 +494,5 @@ final class Weather {
         return new SimpleDateFormat("HH:mm", Locale.US).format(new Date());
     }
 }
+
+

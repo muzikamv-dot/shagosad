@@ -42,6 +42,14 @@ final class Steps {
 
     static final int GOAL = 10000;
     static final int KEEP_DAYS = 21;
+    /** Последняя дата, которую видело приложение (для защиты от скачков часов). */
+    static final String KEY_LAST_DAY = "last_day";
+    /** Текст последнего замеченного скачка времени. */
+    static final String KEY_CLOCK_NOTE = "clock_note";
+    /** Дата, за которую итоги уже закреплены в настройках. */
+    static final String KEY_HIST_DAY = "hist_day";
+    /** Префикс дневных итогов: hist_2026-10-29 = 17012 */
+    static final String KEY_HIST = "hist_";
 
     private static final String FILE = "journal.txt";
 
@@ -64,6 +72,70 @@ final class Steps {
         return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
+    /** Разница в днях между двумя датами yyyy-MM-dd (b − a). */
+    static int daysBetween(String a, String b) {
+        try {
+            java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US);
+            long ta = f.parse(a).getTime();
+            long tb = f.parse(b).getTime();
+            return (int) Math.round((tb - ta) / 86400000.0);
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /** Дата из числа вида 20261029 → строка 2026-10-29. */
+    static String keyToDay(long dayKey) {
+        if (dayKey <= 0) return null;
+        String s = Long.toString(dayKey);
+        if (s.length() != 8) return null;
+        return s.substring(0, 4) + "-" + s.substring(4, 6) + "-" + s.substring(6);
+    }
+
+    /** Строка 2026-10-29 → число 20261029. */
+    static long dayToKey(String day) {
+        if (day == null || day.length() != 10) return 0;
+        try {
+            return Long.parseLong(day.substring(0, 4) + day.substring(5, 7) + day.substring(8, 10));
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /** Смещение пояса в минутах на момент wall. */
+    static int zoneOffset(long wall) {
+        return java.util.TimeZone.getDefault().getOffset(wall) / 60000;
+    }
+
+    /** Сохранить дневные итоги в настройки: журнал может пострадать, история — нет. */
+    static void persistDailyTotals(Context ctx) {
+        LinkedHashMap<String, Integer> days = dailySteps(ctx);
+        android.content.SharedPreferences.Editor e = prefs(ctx).edit();
+        for (Map.Entry<String, Integer> en : days.entrySet()) {
+            if (en.getKey().equals(today())) continue;   // сегодня ещё меняется
+            e.putInt(KEY_HIST + en.getKey(), en.getValue());
+        }
+        e.apply();
+    }
+
+    /** Дни для графика: сохранённые итоги + то, что даёт журнал (журнал главнее). */
+    static LinkedHashMap<String, Integer> mergedDays(Context ctx) {
+        LinkedHashMap<String, Integer> out = new LinkedHashMap<>();
+        android.content.SharedPreferences p = prefs(ctx);
+        for (Map.Entry<String, ?> en : p.getAll().entrySet()) {
+            String k = en.getKey();
+            if (!k.startsWith(KEY_HIST)) continue;
+            if (!(en.getValue() instanceof Integer)) continue;
+            out.put(k.substring(KEY_HIST.length()), (Integer) en.getValue());
+        }
+        out.putAll(dailySteps(ctx));
+        return out;
+    }
+
+    /** Последний замеченный скачок времени (пусто, если не было). */
+    static String clockNote(Context ctx) {
+        return prefs(ctx).getString(KEY_CLOCK_NOTE, "");
+    }
     // ---------------- журнал ----------------
 
     static List<long[]> load(Context ctx) {
@@ -75,11 +147,16 @@ final class Steps {
             r = new BufferedReader(new FileReader(f));
             String line;
             while ((line = r.readLine()) != null) {
+                if (line.startsWith("#")) continue;          // служебные пометки
                 String[] p = line.split("\\|");
-                if (p.length != 3) continue;
+                if (p.length < 3) continue;
                 try {
-                    out.add(new long[]{Long.parseLong(p[0]), Long.parseLong(p[1]),
-                            Math.round(Double.parseDouble(p[2]))});
+                    long wall = Long.parseLong(p[0]);
+                    long elapsed = Long.parseLong(p[1]);
+                    long raw = Math.round(Double.parseDouble(p[2]));
+                    long dayKey = p.length >= 4 ? Long.parseLong(p[3]) : 0L;
+                    long offset = p.length >= 5 ? Long.parseLong(p[4]) : 0L;
+                    out.add(new long[]{wall, elapsed, raw, dayKey, offset});
                 } catch (NumberFormatException ignored) { }
             }
         } catch (Exception ignored) {
@@ -103,11 +180,26 @@ final class Steps {
 
     static synchronized void save(Context ctx, List<long[]> entries) {
         long cutoff = System.currentTimeMillis() - KEEP_DAYS * 86400000L;
+        // Защита от скачка времени: если «сегодня» уехало больше чем на два дня,
+        // чистку не делаем — иначе одним махом вырезается вся история (именно так
+        // у пользователя с VPN получилось «вчера 19, сегодня 4»).
+        String today = today();
+        String lastDay = prefs(ctx).getString(KEY_LAST_DAY, "");
+        boolean jumped = lastDay.length() > 0 && Math.abs(daysBetween(lastDay, today)) > 2;
+        if (jumped) {
+            prefs(ctx).edit()
+                    .putString(KEY_CLOCK_NOTE, "скачок времени: " + lastDay + " → " + today)
+                    .apply();
+        }
+        if (!lastDay.equals(today)) prefs(ctx).edit().putString(KEY_LAST_DAY, today).apply();
+
         StringBuilder sb = new StringBuilder();
+        if (jumped) sb.append("# скачок времени ").append(lastDay).append(" -> ")
+                .append(today).append('\n');
         long lastKept = 0;
         int lastStart = -1;
         for (long[] e : entries) {
-            if (e[0] < cutoff) continue;
+            if (!jumped && e[0] < cutoff) continue;
             // прореживаем до одного замера в минуту. Слишком частые не выбрасываем,
             // а заменяем предыдущую запись свежей — так в журнале всегда самое
             // актуальное значение, но файл не пухнет на тысячи строк в сутки.
@@ -115,7 +207,13 @@ final class Steps {
                 sb.setLength(lastStart);
             }
             lastStart = sb.length();
-            sb.append(e[0]).append('|').append(e[1]).append('|').append(e[2]).append('\n');
+            sb.append(e[0]).append('|').append(e[1]).append('|').append(e[2]);
+            if (e.length >= 5 && e[3] != 0) {
+                // дата и смещение пояса на момент замера: день больше не
+                // пересчитывается по текущему поясу, история не «переезжает»
+                sb.append('|').append(e[3]).append('|').append(e[4]);
+            }
+            sb.append('\n');
             lastKept = e[0];
         }
         writeAtomically(new File(ctx.getFilesDir(), FILE), sb.toString());
@@ -198,6 +296,10 @@ final class Steps {
 
             // порядок — по «настенным» часам: только он не путается после
             // перезагрузки телефона, когда метка датчика начинается с нуля
+            if (n.length < 5) {
+                // дата и смещение пояса фиксируются здесь, при записи
+                n = new long[]{n[0], n[1], n[2], dayToKey(dayOf(n[0])), zoneOffset(n[0])};
+            }
             int pos = list.size();
             while (pos > 0 && list.get(pos - 1)[0] > n[0]) pos--;
             list.add(pos, n);
@@ -232,8 +334,22 @@ final class Steps {
             if (delta <= 0) continue;
 
             long t1 = a[0], t2 = b[0];
-            if (t2 <= t1 || dayOf(t1).equals(dayOf(t2))) {
-                add(days, dayOf(t2), (int) delta);
+            // День берём из записи (дата и пояс на момент замера). У старых строк
+            // даты нет — тогда считаем по текущему поясу, как раньше.
+            String dayA = a.length >= 5 ? keyToDay(a[3]) : null;
+            String dayB = b.length >= 5 ? keyToDay(b[3]) : null;
+            if (dayA == null) dayA = dayOf(t1);
+            if (dayB == null) dayB = dayOf(t2);
+
+            if (t2 <= t1 || dayA.equals(dayB)) {
+                add(days, dayB, (int) delta);
+                continue;
+            }
+
+            // Длинный разрыв (телефон спал, VPN держал сеть, замеров не было) —
+            // не размазываем шаги по времени, относим целиком туда, где замер.
+            if (t2 - t1 > 2 * 3600000L) {
+                add(days, dayB, (int) delta);
                 continue;
             }
 
@@ -268,6 +384,14 @@ final class Steps {
 
     /** Пересчитать кэш «шаги сегодня» — его читают виджет и уведомление. */
     static int refreshToday(Context ctx) {
+        // при смене суток закрепляем итоги прошлых дней в настройках.
+        // Отдельный ключ: last_day обновляется ещё и при сохранении журнала.
+        String histDay = prefs(ctx).getString(KEY_HIST_DAY, "");
+        if (!histDay.equals(today())) {
+            persistDailyTotals(ctx);
+            prefs(ctx).edit().putString(KEY_HIST_DAY, today()).apply();
+        }
+
         LinkedHashMap<String, Integer> days = dailySteps(ctx);
         Integer today = days.get(today());
         int steps = today == null ? 0 : today;

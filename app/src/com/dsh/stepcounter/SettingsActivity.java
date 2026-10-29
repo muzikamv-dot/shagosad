@@ -362,6 +362,12 @@ public class SettingsActivity extends Activity {
         });
         testBox.addView(journal);
 
+        Button export = row("Выгрузить журнал шагов в файл");
+        export.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { exportJournal(); }
+        });
+        testBox.addView(export);
+
         // проверка сцены: посмотреть утро/день/вечер/ночь, не дожидаясь часов
         final Button hourTest = row(hourTestLabel());
         hourTest.setOnClickListener(new View.OnClickListener() {
@@ -802,6 +808,32 @@ public class SettingsActivity extends Activity {
                 })
                 .setNegativeButton("Закрыть", null)
                 .show();
+    }
+
+    /** Выгрузить журнал шагов в файл, чтобы прислать разработчику. */
+    private void exportJournal() {
+        try {
+            java.io.File src = new java.io.File(getFilesDir(), "journal.txt");
+            java.io.File dir = getExternalFilesDir(null);
+            java.io.File out = new java.io.File(dir, "journal-" + Steps.today() + ".txt");
+            java.io.FileInputStream in = new java.io.FileInputStream(src);
+            java.io.FileOutputStream os = new java.io.FileOutputStream(out);
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
+            in.close();
+            os.close();
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("Журнал выгружен")
+                    .setMessage("Файл: " + out.getAbsolutePath()
+                            + "\\n\\nЕго можно отправить с телефона (файловый менеджер, "
+                            + "«Поделиться») или забрать по USB.")
+                    .setPositiveButton("Закрыть", null)
+                    .show();
+        } catch (Exception e) {
+            Toast.makeText(this, "Не удалось выгрузить: " + e.getClass().getSimpleName(),
+                    Toast.LENGTH_LONG).show();
+        }
     }
 
     private void runDiag() {        diagView.setText("Опрашиваю датчик…");
