@@ -129,7 +129,16 @@ public class MainActivity extends Activity {
                     Toast.LENGTH_LONG).show();
         }
         game.save(this);
-        setContentView(buildUi());
+        // фон и украшения уходят под интерфейс: ветки — подложка, а не поверх кнопок
+        View content = buildUi();
+        android.graphics.drawable.Drawable pageBg = content.getBackground();
+        content.setBackground(null);
+        android.widget.FrameLayout holder = new android.widget.FrameLayout(this);
+        if (pageBg != null) holder.setBackground(pageBg);
+        NewYearDecor.attach(this, holder);
+        holder.addView(content, new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        setContentView(holder);
 
         // Награды: всё, что получено и ещё ни разу не показывалось, проигрываем
         // по очереди полноэкранно. После обновления сюда попадут и старые медали.
@@ -467,7 +476,8 @@ public class MainActivity extends Activity {
     private LinearLayout buildNav() {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setBackgroundColor(Theme.BG_TOP);
+        // панель прозрачная: сквозь неё видно фон и новогодние ветки
+        bar.setBackgroundColor(0x00000000);
         // по 8dp сверху и снизу: подсветка вкладки не прилипает к разделителю
         bar.setPadding(dp(6), dp(8), dp(6), dp(8));
 

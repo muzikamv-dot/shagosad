@@ -25,7 +25,7 @@ public final class Changelog {
     private Changelog() { }
 
     public static final Day[] DAYS = {
-            new Day("5 ноября 2026", "10.33 – 11.31", new String[]{
+            new Day("5 ноября 2026", "10.33 – 11.45", new String[]{
                     "Работа над новогодним ивентом"
             }),
 

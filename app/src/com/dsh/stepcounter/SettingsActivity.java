@@ -328,6 +328,19 @@ public class SettingsActivity extends Activity {
 
         // новогодний ивент: афиша, включение и сброс — только в меню разработчика
         testBox.addView(section("НОВЫЙ ГОД"));
+        final Button decorBtn = row(decorLabel());
+        testBox.addView(decorBtn);
+        decorBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                boolean now = !NewYearDecor.enabled(SettingsActivity.this);
+                NewYearDecor.setAlways(SettingsActivity.this, now);
+                decorBtn.setText(decorLabel());
+                Toast.makeText(SettingsActivity.this,
+                        now ? "Оформление включено (нужен перезапуск)"
+                           : "Оформление только по датам (нужен перезапуск)",
+                        Toast.LENGTH_SHORT).show();
+            }
+        });
         // РАЗРАБОТКА (для владельца): принудительно показать афишу или включить ивент
 
         final Button promoBtn = row(promoLabel());
@@ -718,6 +731,10 @@ public class SettingsActivity extends Activity {
         }
     }
 
+    /** Подпись кнопки оформления для теста. */
+    private String decorLabel() {
+        return "Новогоднее оформление: " + (NewYearDecor.enabled(this) ? "включено" : "по датам");
+    }
     /** Подпись кнопки афиши для теста. */
     private String promoLabel() {
         boolean on = getSharedPreferences(Steps.PREFS, MODE_PRIVATE)
