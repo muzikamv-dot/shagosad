@@ -141,6 +141,11 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(holder);
 
+        // при запуске проверяем обновление: если вышла новая версия — окно с двумя кнопками
+        getWindow().getDecorView().post(new Runnable() {
+            @Override public void run() { Updater.promptIfUpdate(MainActivity.this); }
+        });
+
         // Награды: всё, что получено и ещё ни разу не показывалось, проигрываем
         // по очереди полноэкранно. После обновления сюда попадут и старые медали.
         final java.util.List<Achievements.Ach> toShow = Achievements.unshown(game, this);

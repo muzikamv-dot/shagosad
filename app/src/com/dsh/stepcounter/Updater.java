@@ -1,6 +1,14 @@
 package com.dsh.stepcounter;
 
 import android.app.Activity;
+import android.app.Dialog;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.Typeface;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
@@ -231,6 +239,116 @@ public final class Updater {
         }
     }
 
+    /** Окно при запуске: «Есть обновление» с кнопками «Позже» и «Обновить». */
+    public static void promptIfUpdate(final Activity activity) {
+        check(activity, new Callback() {
+            @Override public void done(Info info, boolean available, String error) {
+                if (!available || info == null || activity.isFinishing()) return;
+                showDialog(activity, info);
+            }
+        });
+    }
+
+    private static void showDialog(final Activity a, final Info info) {
+        int bg = Theme.SURFACE;
+        int stroke = Theme.STROKE;
+        int text = Theme.TEXT;
+        int muted = Theme.MUTED;
+        int accent = Theme.ACCENT;
+        int onAccent = Theme.ON_ACCENT;
+
+        int pad = Math.round(20 * a.getResources().getDisplayMetrics().density);
+
+        LinearLayout card = new LinearLayout(a);
+        card.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setCornerRadius(pad * 1.3f);
+        cardBg.setColor(bg);
+        cardBg.setStroke(1, stroke);
+        card.setBackground(cardBg);
+        card.setPadding(pad, pad, pad, pad);
+
+        TextView title = new TextView(a);
+        title.setText("Есть обновление");
+        title.setTextColor(text);
+        title.setTextSize(19);
+        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        title.setGravity(Gravity.CENTER);
+        card.addView(title);
+
+        TextView sub = new TextView(a);
+        sub.setText("Сейчас стоит " + installedName(a) + ", доступна " + info.versionName);
+        sub.setTextColor(muted);
+        sub.setTextSize(13);
+        sub.setGravity(Gravity.CENTER);
+        sub.setPadding(0, pad / 3, 0, pad);
+        card.addView(sub);
+
+        LinearLayout row = new LinearLayout(a);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+
+        TextView later = new TextView(a);
+        later.setText("Позже");
+        later.setTextSize(15);
+        later.setTextColor(text);
+        later.setGravity(Gravity.CENTER);
+        later.setPadding(0, pad * 3 / 4, 0, pad * 3 / 4);
+        GradientDrawable laterBg = new GradientDrawable();
+        laterBg.setCornerRadius(pad);
+        laterBg.setColor(0x00000000);
+        laterBg.setStroke(1, stroke);
+        later.setBackground(laterBg);
+
+        TextView now = new TextView(a);
+        now.setText("Обновить");
+        now.setTextSize(15);
+        now.setTextColor(onAccent);
+        now.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        now.setGravity(Gravity.CENTER);
+        now.setPadding(0, pad * 3 / 4, 0, pad * 3 / 4);
+        GradientDrawable nowBg = new GradientDrawable();
+        nowBg.setCornerRadius(pad);
+        nowBg.setColor(accent);
+        now.setBackground(nowBg);
+
+        // кнопки одинаковой ширины — окно выглядит симметрично
+        LinearLayout.LayoutParams left = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        left.rightMargin = pad / 3;
+        LinearLayout.LayoutParams right = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        right.leftMargin = pad / 3;
+        row.addView(later, left);
+        row.addView(now, right);
+        card.addView(row);
+
+        final Dialog dialog = new Dialog(a);
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+        dialog.setContentView(card);
+        dialog.setCancelable(true);
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0x00000000));
+            android.view.WindowManager.LayoutParams lp = dialog.getWindow().getAttributes();
+            lp.width = (int) (a.getResources().getDisplayMetrics().widthPixels * 0.86f);
+            dialog.getWindow().setAttributes(lp);
+        }
+
+        later.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { dialog.dismiss(); }
+        });
+        now.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                dialog.dismiss();
+                downloadAndInstall(a, info, new Runnable() {
+                    @Override public void run() {
+                        android.widget.Toast.makeText(a, "Не удалось скачать обновление",
+                                android.widget.Toast.LENGTH_LONG).show();
+                    }
+                });
+            }
+        });
+        dialog.show();
+    }
     static boolean hasInstallPermission(Activity a) {
         if (Build.VERSION.SDK_INT < 26) return true;
         PackageManager pm = a.getPackageManager();
