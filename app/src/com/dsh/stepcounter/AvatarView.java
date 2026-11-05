@@ -79,7 +79,7 @@ public class AvatarView extends View {
             r.set(cx - dw / 2f, cy - dh / 2f, cx + dw / 2f, cy + dh / 2f);
             c.drawBitmap(photo, null, r, p);
             c.restore();
-            Shop.drawFrame(c, cx, cy, rad, frame, d);
+            Shop.drawFrame(c, cx, cy, rad, frame, d, getContext());
             return;
         }
 
@@ -198,7 +198,7 @@ public class AvatarView extends View {
         c.restore();
 
         // рамка — снаружи от содержимого
-        Shop.drawFrame(c, cx, cy, rad, frame, d);
+        Shop.drawFrame(c, cx, cy, rad, frame, d, getContext());
     }
 
     private static int lighten(int color, float k) {

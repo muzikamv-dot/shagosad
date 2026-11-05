@@ -22,17 +22,24 @@ public final class Shop {
 
     public static final String[] FRAME_NAMES = {
             "Без рамки", "Золотая", "Лиственная", "Цветочная",
-            "Кристальная", "Звёздная", "Лавровая", "Неоновая"
+            "Кристальная", "Звёздная", "Лавровая", "Неоновая",
+            "Еловая", "Снежная", "Игрушечная"
     };
 
     /**
      * Цены растут быстрее дохода: первая рамка за день-два, последняя — за месяц.
      * При доходе ≈343 очка в день весь магазин (24 500) закрывается примерно за 71 день.
      */
-    public static final int[] FRAME_PRICES = {0, 400, 900, 1600, 2600, 4000, 6000, 9000};
+    public static final int[] FRAME_PRICES = {
+            0, 400, 900, 1600, 2600, 4000, 6000, 9000,
+            150, 300, 500
+    };
 
     /** Минимальный уровень для покупки: рамка — ещё и награда за путь. 0 — без ограничения. */
-    public static final int[] FRAME_LEVEL = {0, 0, 0, 5, 8, 12, 18, 25};
+    public static final int[] FRAME_LEVEL = {
+            0, 0, 0, 5, 8, 12, 18, 25,
+            0, 0, 0
+    };
 
     /** Цена с пробелами между тысячами: 9 000 вместо 9000. */
     public static String money(int v) {
@@ -51,8 +58,41 @@ public final class Shop {
         return id == 0 || g.ownedFrames.contains(id);
     }
 
+    /** Кэш картинок новогодних рамок: декодируем один раз на процесс. */
+    private static final android.util.SparseArray<android.graphics.Bitmap> BITMAPS =
+            new android.util.SparseArray<>();
+
+    /** Новогодние рамки рисуются готовыми картинками. */
+    private static android.graphics.Bitmap frameBitmap(android.content.Context ctx, int id) {
+        if (ctx == null) return null;
+        android.graphics.Bitmap b = BITMAPS.get(id);
+        if (b != null) return b;
+        int res = ctx.getResources().getIdentifier("ny_frame_" + (id - 7),
+                "drawable", ctx.getPackageName());
+        if (res == 0) return null;
+        b = android.graphics.BitmapFactory.decodeResource(ctx.getResources(), res);
+        if (b != null) BITMAPS.put(id, b);
+        return b;
+    }
+
     public static void drawFrame(Canvas c, float cx, float cy, float r, int id, float d) {
+        drawFrame(c, cx, cy, r, id, d, null);
+    }
+
+    public static void drawFrame(Canvas c, float cx, float cy, float r, int id, float d,
+                                 android.content.Context ctx) {
         if (id <= 0) return;
+        if (id >= 8) {
+            android.graphics.Bitmap b = frameBitmap(ctx, id);
+            if (b != null) {
+                // картинка занимает чуть больше кольца, как и код-рамки (до r*1.06)
+                float half = r * 1.06f;
+                RectF dst = new RectF(cx - half, cy - half, cx + half, cy + half);
+                Paint ip = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+                c.drawBitmap(b, null, dst, ip);
+                return;
+            }
+        }
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         p.setStyle(Paint.Style.STROKE);
         p.setStrokeCap(Paint.Cap.ROUND);
