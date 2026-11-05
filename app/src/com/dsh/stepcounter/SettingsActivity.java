@@ -328,6 +328,28 @@ public class SettingsActivity extends Activity {
 
         // новогодний ивент: афиша, включение и сброс — только в меню разработчика
         testBox.addView(section("НОВЫЙ ГОД"));
+        // ТЕСТ обновления: скачивает последний APK и открывает установщик,
+        // даже если версия на GitHub не новее — чтобы проверить цепочку целиком.
+        Button updateTest = row("Скачать обновление (тест)");
+        updateTest.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Toast.makeText(SettingsActivity.this, "Скачиваю последний APK…", Toast.LENGTH_SHORT).show();
+                Updater.check(SettingsActivity.this, new Updater.Callback() {
+                    @Override public void done(Updater.Info info, boolean available, String error) {
+                        Updater.Info target = info != null ? info
+                                : new Updater.Info("latest", 0,
+                                        "https://github.com/muzikamv-dot/shagosad/releases/latest/download/ShagoSad.apk");
+                        Updater.downloadAndInstall(SettingsActivity.this, target, new Runnable() {
+                            @Override public void run() {
+                                Toast.makeText(SettingsActivity.this,
+                                        "Не удалось скачать APK", Toast.LENGTH_LONG).show();
+                            }
+                        });
+                    }
+                });
+            }
+        });
+        testBox.addView(updateTest);
         final Button decorBtn = row(decorLabel());
         testBox.addView(decorBtn);
         decorBtn.setOnClickListener(new View.OnClickListener() {

@@ -30,6 +30,10 @@ public final class Updater {
 
     private static final String VERSION_URL =
             "https://raw.githubusercontent.com/muzikamv-dot/shagosad/main/version.json";
+    private static final String API_URL =
+            "https://api.github.com/repos/muzikamv-dot/shagosad/releases/latest";
+    private static final String APK_URL =
+            "https://github.com/muzikamv-dot/shagosad/releases/latest/download/ShagoSad.apk";
 
     /** Что удалось узнать о новой версии. */
     public static class Info {
@@ -77,18 +81,47 @@ public final class Updater {
             @Override public void run() {
                 Info info = null;
                 String error = null;
+                // 1) официальный API релизов: без кэша CDN, всегда свежие данные
                 try {
-                    String body = read(VERSION_URL);
+                    String body = read(API_URL);
                     JSONObject o = new JSONObject(body);
-                    info = new Info(o.optString("versionName", "?"),
-                            o.optInt("versionCode", 0),
-                            o.optString("apk", ""));
+                    String tag = o.optString("tag_name", "").replace("v", "");
+                    String apk = "";
+                    org.json.JSONArray assets = o.optJSONArray("assets");
+                    if (assets != null) {
+                        for (int i = 0; i < assets.length(); i++) {
+                            JSONObject a = assets.getJSONObject(i);
+                            String nm = a.optString("name", "");
+                            if (nm.endsWith(".apk")) {
+                                apk = a.optString("browser_download_url", "");
+                                break;
+                            }
+                        }
+                    }
+                    if (apk.isEmpty()) apk = APK_URL;
+                    if (!tag.isEmpty()) {
+                        info = new Info(tag, codeFromName(tag), apk);
+                    }
                 } catch (Exception e) {
                     error = e.getClass().getSimpleName();
                 }
+                // 2) запасной путь: version.json в репозитории
+                if (info == null) {
+                    try {
+                        String body = read(VERSION_URL + "?t=" + System.currentTimeMillis());
+                        JSONObject o = new JSONObject(body);
+                        info = new Info(o.optString("versionName", "?"),
+                                o.optInt("versionCode", 0),
+                                o.optString("apk", APK_URL));
+                    } catch (Exception e) {
+                        if (error == null) error = e.getClass().getSimpleName();
+                    }
+                }
                 final Info fi = info;
                 final String fe = error;
-                final boolean available = info != null && info.versionCode > installedCode(activity);
+                final int installed = Math.max(installedCode(activity),
+                        codeFromName(installedName(activity)));
+                final boolean available = info != null && info.versionCode > installed;
                 ui.post(new Runnable() {
                     @Override public void run() { cb.done(fi, available, fe); }
                 });
@@ -96,11 +129,24 @@ public final class Updater {
         }).start();
     }
 
+    /** «11.58» → 11 * 1000 + 58: сравниваем версии без versionCode. */
+    static int codeFromName(String name) {
+        try {
+            String[] parts = name.split("[.]");
+            int major = Integer.parseInt(parts[0].replaceAll("[^0-9]", ""));
+            int minor = parts.length > 1 ? Integer.parseInt(parts[1].replaceAll("[^0-9]", "")) : 0;
+            return major * 1000 + minor;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
     private static String read(String url) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         c.setConnectTimeout(8000);
         c.setReadTimeout(8000);
         c.setRequestProperty("Accept", "application/json");
+        c.setRequestProperty("Cache-Control", "no-cache, no-store");
         try {
             InputStream in = c.getInputStream();
             java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();

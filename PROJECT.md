@@ -13,7 +13,7 @@
 - package: `com.dsh.stepcounter`
 - launcher label: **ШагоСад**
 - minSdk 26, targetSdk 35, compileSdk 35
-- версия: versionCode 241 / versionName 11.57
+- версия: versionCode 245 / versionName 11.61
 - подпись: `~/.dsh/secrets/stepkey.keystore` (alias stepkey, пароль хранится локально в `secrets.local.ps1` (в репозиторий не попадает))
   резерв: `~/stepapp-keys/stepkey-backup.keystore`
 
@@ -1268,3 +1268,17 @@ TEMP надо выставить до вызова. После подъёма д
 верхний угол заполняется плотнее), поворот и прозрачность 12–40 %, размер 1,8–8,8 %
 ширины. Рисунок один, без анимации — батарею не тратит, касания не перехватывает.
 Слой добавляется в `MainActivity` между фоном и контентом (`SnowBackdrop.attach`).
+
+### Обновление из настроек (11.61)
+
+Кнопка в «О ПРИЛОЖЕНИИ»: `Updater` спрашивает
+`https://api.github.com/repos/muzikamv-dot/shagosad/releases/latest`, берёт `tag_name`
+и адрес APK из ассетов (запасной путь — `version.json` в корне репозитория, его
+генерирует `publish.ps1`). Сравнение по версии: `versionCode` либо `major*1000+minor`
+из `versionName`, поэтому релиз с тегом `v11.61` корректно сравнивается с установленной.
+
+По нажатию: скачивание в `cacheDir/update.apk` → `ApkProvider` (свой ContentProvider,
+authority `com.dsh.stepcounter.apk`) отдаёт файл по `content://` → системный установщик.
+Если не выдано «Установка неизвестных приложений», открывается системный экран
+`ACTION_MANAGE_UNKNOWN_APP_SOURCES`. В манифесте: `REQUEST_INSTALL_PACKAGES`, провайдер
+с `grantUriPermissions`. В меню разработчика осталась кнопка «Скачать обновление (тест)».
