@@ -135,6 +135,7 @@ public class MainActivity extends Activity {
         content.setBackground(null);
         android.widget.FrameLayout holder = new android.widget.FrameLayout(this);
         if (pageBg != null) holder.setBackground(pageBg);
+        SnowBackdrop.attach(this, holder);   // статичные снежинки для новогодней темы
         NewYearDecor.attach(this, holder);
         holder.addView(content, new android.widget.FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -476,8 +477,7 @@ public class MainActivity extends Activity {
     private LinearLayout buildNav() {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
-        // панель прозрачная: сквозь неё видно фон и новогодние ветки
-        bar.setBackgroundColor(0x00000000);
+        bar.setBackgroundColor(Theme.NAV);
         // по 8dp сверху и снизу: подсветка вкладки не прилипает к разделителю
         bar.setPadding(dp(6), dp(8), dp(6), dp(8));
 

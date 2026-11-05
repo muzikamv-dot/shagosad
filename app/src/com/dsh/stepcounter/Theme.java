@@ -26,10 +26,9 @@ public final class Theme {
     public static final int T_KAWAI = 3;
     public static final int T_LIGHT = 4;
     public static final int T_OLED = 5;
-
+    public static final int T_NEWYEAR = 6;
     public static final String[] NAMES = {"Ночной сад", "Обсидиан", "Лаванда", "Кавай",
-            "Светлая", "OLED"};
-
+            "Светлая", "OLED", "Новогодняя"};
     private static final String PREFS = "ui";
     private static final String KEY = "theme";
 
@@ -70,6 +69,7 @@ public final class Theme {
             case T_KAWAI: kawai(); break;
             case T_LIGHT: light(); break;
             case T_OLED: oled(); break;
+            case T_NEWYEAR: newYear(); break;
             default: nightGarden(); break;
         }
     }
@@ -338,6 +338,45 @@ public final class Theme {
         SOIL_EDGE = 0xFF0A0705;
         GLOW = 0x00000000;   // свечения нет: каждый светлый пиксель — расход
         ON_ACCENT = 0xFF04120D;
+    }
+    /** «Новогодняя»: золото на ночном небе — тёплый акцент, глубокий синий фон. */
+    private static void newYear() {
+        BG_TOP = 0xFF0B1730;
+        BG_BOTTOM = 0xFF050B18;
+        SURFACE = 0xFF12203A;
+        SURFACE_HI = 0xFF1A2B4A;
+        STROKE = 0xFF2B4468;
+
+        TEXT = 0xFFF2F7FF;
+        DIM = 0xFFC8D8F0;
+        MUTED = 0xFF8FA6C6;
+        FAINT = 0xFF6B809F;
+
+        ACCENT = 0xFFF6D48A;
+        ACCENT_SOFT = 0xFFFFE9B0;
+        ACCENT_DEEP = 0xFFC9A24A;
+        CYAN = 0xFF8FD8FF;
+        GOLD = 0xFFF6D48A;
+
+        PINK = 0xFFE0A0A8;
+        PINK_DEEP = 0xFFB87A84;
+        LAVENDER = 0xFFA9B8E0;
+        BLUSH = 0x22F6D48A;
+
+        CARD = 0xFF12203A;
+        CARD_STROKE = 0xFF2B4468;
+        NAV = 0xFF0A1428;
+
+        PANEL_TOP = 0xFF142238;
+        PANEL_BOTTOM = 0xFF0A1526;
+        PANEL_BORDER = 0xFF33507A;
+        PANEL_TEXT = 0xFFF2F7FF;
+        CHIP = 0xFF16263F;
+        CHIP_BORDER = 0xFF33507A;
+        ACTION_OFF = 0xFF16263F;
+        SOIL_EDGE = 0xFF08131F;
+        GLOW = 0x33FFD772;   // тёплое свечение вокруг акцента
+        ON_ACCENT = 0xFF0C1220;
     }
     public static void bars(Activity a) {
         View d = a.getWindow().getDecorView();
