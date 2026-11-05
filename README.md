@@ -12,7 +12,21 @@
 
 ## Скачать
 
-Последняя сборка: **[ШагоСад.apk](https://github.com/muzikamv-dot/shagosad/releases/latest/download/ShagoSad.apk)** (0,6 МБ)
+<p align="center">
+  <a href="https://github.com/muzikamv-dot/shagosad/releases/latest/download/ShagoSad.apk">
+    <img src="https://img.shields.io/badge/%D0%A1%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C-APK%20%D0%B4%D0%BB%D1%8F%20Android-2ea44f?style=for-the-badge&logo=android&logoColor=white" alt="Скачать APK">
+  </a>
+</p>
+
+**Прямая ссылка** (всегда самый свежий релиз, ничего искать не нужно):
+
+https://github.com/muzikamv-dot/shagosad/releases/latest/download/ShagoSad.apk
+
+- все версии: [releases](https://github.com/muzikamv-dot/shagosad/releases)
+- резервная ссылка на файл в репозитории:
+  [dist/ShagoSad.apk](https://github.com/muzikamv-dot/shagosad/raw/main/dist/ShagoSad.apk)
+
+Последняя сборка: **@VERSION@** (@APK_SIZE@)
 
 Ссылка постоянная — всегда отдаёт самый свежий релиз. Обновлять приложение можно через [Obtainium](https://github.com/ImranR98/Obtainium): добавьте `https://github.com/muzikamv-dot/shagosad` как источник типа GitHub.
 Android при установке спросит разрешение на установку из браузера и может
