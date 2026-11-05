@@ -542,6 +542,13 @@ public class SettingsActivity extends Activity {
         // О ПРИЛОЖЕНИИ
         box.addView(section("О ПРИЛОЖЕНИИ"));
 
+        // Обновление прямо с GitHub: проверка версии, скачивание и установка
+        updateBtn = row("Обновление: проверить");
+        box.addView(updateBtn);
+        updateBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { onUpdateClicked(); }
+        });
+        checkUpdates(false);
         Button changelog = row("История изменений");
         changelog.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
@@ -734,6 +741,59 @@ public class SettingsActivity extends Activity {
     /** Подпись кнопки оформления для теста. */
     private String decorLabel() {
         return "Новогоднее оформление: " + (NewYearDecor.enabled(this) ? "включено" : "по датам");
+    }
+    // ---------------- обновление ----------------
+
+    private Button updateBtn;
+    /** Свежая версия, если проверка уже нашла обновление. */
+    private Updater.Info pendingUpdate;
+
+    private void onUpdateClicked() {
+        if (pendingUpdate != null) {
+            updateBtn.setText("Обновление: скачиваю…");
+            updateBtn.setEnabled(false);
+            Updater.downloadAndInstall(this, pendingUpdate, new Runnable() {
+                @Override public void run() {
+                    updateBtn.setEnabled(true);
+                    updateBtn.setText(updateText());
+                    Toast.makeText(SettingsActivity.this,
+                            "Не удалось скачать обновление", Toast.LENGTH_LONG).show();
+                }
+            });
+            return;
+        }
+        checkUpdates(true);
+    }
+
+    /** Проверка версии на GitHub; silent — без тостов, если проверяем при открытии. */
+    private void checkUpdates(final boolean byUser) {
+        if (updateBtn == null) return;
+        updateBtn.setText("Обновление: проверяю…");
+        Updater.check(this, new Updater.Callback() {
+            @Override public void done(Updater.Info info, boolean updateAvailable, String error) {
+                pendingUpdate = updateAvailable ? info : null;
+                updateFailed = info == null;
+                updateBtn.setEnabled(true);
+                updateBtn.setText(updateText());
+                if (byUser) {
+                    String msg = info == null
+                            ? "Не удалось проверить: нет связи с GitHub"
+                            : updateAvailable
+                                ? "Есть новая версия " + info.versionName
+                                : "Обновление не нужно — стоит последняя";
+                    Toast.makeText(SettingsActivity.this, msg, Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+    }
+
+    /** Состояние проверки: нет связи — так и пишем, чтобы можно было повторить. */
+    private boolean updateFailed;
+
+    private String updateText() {
+        if (pendingUpdate != null) return "Обновить до " + pendingUpdate.versionName;
+        if (updateFailed) return "Обновление: проверить (нет связи)";
+        return "Обновление не нужно (" + Updater.installedName(this) + ")";
     }
     /** Подпись кнопки афиши для теста. */
     private String promoLabel() {

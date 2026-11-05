@@ -13,7 +13,7 @@
 - package: `com.dsh.stepcounter`
 - launcher label: **ШагоСад**
 - minSdk 26, targetSdk 35, compileSdk 35
-- версия: versionCode 239 / versionName 11.55
+- версия: versionCode 241 / versionName 11.57
 - подпись: `~/.dsh/secrets/stepkey.keystore` (alias stepkey, пароль хранится локально в `secrets.local.ps1` (в репозиторий не попадает))
   резерв: `~/stepapp-keys/stepkey-backup.keystore`
 
