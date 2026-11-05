@@ -282,14 +282,6 @@ public class SettingsActivity extends Activity {
         });
         box.addView(themeButton);
 
-        // Погода в сцене сада. В «авто» — настоящая из open-meteo по координатам,
-        // ручные значения её перекрывают.
-        weatherButton = row(weatherLabel());
-        weatherButton.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { cycleWeather(); }
-        });
-        box.addView(weatherButton);
-
         Button reset = row("Сбросить прогресс");
         reset.setTextColor(0xFFFF9A8A);
         reset.setOnClickListener(new View.OnClickListener() {
@@ -311,16 +303,6 @@ public class SettingsActivity extends Activity {
         });
         box.addView(battery);
 
-        // СЛУЖБА
-        box.addView(section("ФОН"));
-        boolean serviceOn = getSharedPreferences(Steps.PREFS, MODE_PRIVATE)
-                .getBoolean(Steps.KEY_SERVICE, false);
-        serviceButton = row("Фоновая служба: " + (serviceOn ? "включена" : "выключена"));
-        serviceButton.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { toggleService(); }
-        });
-        box.addView(serviceButton);
-
         // ДАННЫЕ
         box.addView(section("ДАННЫЕ"));
         Button saveCopy = row("Сохранить копию прогресса");
@@ -335,12 +317,80 @@ public class SettingsActivity extends Activity {
         });
         box.addView(loadCopy);
 
+
+
         // ТЕСТ (скрыт, открывается 7 тапами по версии)
         final LinearLayout testBoxRef = new LinearLayout(this);
         testBox = testBoxRef;
         testBox.setOrientation(LinearLayout.VERTICAL);
         testBox.setVisibility(View.GONE);
         testBox.addView(section("ТЕСТ И ДИАГНОСТИКА"));
+
+        // новогодний ивент: афиша, включение и сброс — только в меню разработчика
+        testBox.addView(section("НОВЫЙ ГОД"));
+        // РАЗРАБОТКА (для владельца): принудительно показать афишу или включить ивент
+
+        final Button promoBtn = row(promoLabel());
+        testBox.addView(promoBtn);
+        promoBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                SharedPreferences p = getSharedPreferences(Steps.PREFS, MODE_PRIVATE);
+                boolean now = !p.getBoolean(NewYear.PREF_FORCE_PROMO, false);
+                p.edit().putBoolean(NewYear.PREF_FORCE_PROMO, now).apply();
+                promoBtn.setText(promoLabel());
+                Toast.makeText(SettingsActivity.this,
+                        now ? "Афиша включена" : "Афиша выключена", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        final Button eventBtn = row(eventLabel());
+        testBox.addView(eventBtn);
+        eventBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                SharedPreferences p = getSharedPreferences(Steps.PREFS, MODE_PRIVATE);
+                boolean now = !p.getBoolean(NewYear.PREF_FORCE_EVENT, false);
+                p.edit().putBoolean(NewYear.PREF_FORCE_EVENT, now).apply();
+                eventBtn.setText(eventLabel());
+                Toast.makeText(SettingsActivity.this,
+                        now ? "Ивент включён" : "Ивент считается по датам", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        Button nyReset = row("Сбросить новогодний ивент (тест)");
+        nyReset.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                new AlertDialog.Builder(SettingsActivity.this)
+                        .setTitle("Новогодний ивент")
+                        .setMessage("Открытые окошки адвента закроются, украшения с ёлки вернутся в коробку.\n"
+                                + "Обычный прогресс (цветы, шаги, открытки) не тронется.")
+                        .setPositiveButton("Сбросить", new DialogInterface.OnClickListener() {
+                            @Override public void onClick(DialogInterface d, int w) {
+                                game.nyMask = 0;
+                                game.nyPlaced = "";
+                                game.save(SettingsActivity.this);
+                                Toast.makeText(SettingsActivity.this,
+                                        "Новогодний ивент сброшен", Toast.LENGTH_SHORT).show();
+                            }
+                        })
+                        .setNegativeButton("Отмена", null)
+                        .show();
+            }
+        });
+        testBox.addView(nyReset);
+
+        Button weatherDev = row(weatherLabel());
+        weatherDev.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { cycleWeather(); weatherDev.setText(weatherLabel()); }
+        });
+        testBox.addView(weatherDev);
+
+        boolean serviceOn = getSharedPreferences(Steps.PREFS, MODE_PRIVATE)
+                .getBoolean(Steps.KEY_SERVICE, false);
+        serviceButton = row("Фоновая служба: " + (serviceOn ? "включена" : "выключена"));
+        serviceButton.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { toggleService(); }
+        });
+        testBox.addView(serviceButton);
 
         Button manual = row("Начислить шаги вручную");
         manual.setOnClickListener(new View.OnClickListener() {
@@ -479,30 +529,6 @@ public class SettingsActivity extends Activity {
         // О ПРИЛОЖЕНИИ
         box.addView(section("О ПРИЛОЖЕНИИ"));
 
-        // Открыть меню разработчика обычной кнопкой: семь тапов по версии остались,
-        // но это уже не единственный вход — владелец попросил нормальную кнопку.
-        final Button devMenu = row("Меню разработчика: открыть");
-        // Меню разработчика показываем только для сборок «не из магазина»:
-        // на телефоне владельца (adb) оно есть всегда, а в RuStore у обычных
-        // пользователей и модерации кнопки не будет.
-        if (installedFromStore()) devMenu.setVisibility(View.GONE);
-        devMenu.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                boolean open = testBox.getVisibility() != View.VISIBLE;
-                testBox.setVisibility(open ? View.VISIBLE : View.GONE);
-                devMenu.setText(open ? "Меню разработчика: скрыть"
-                        : "Меню разработчика: открыть");
-                if (open) {
-                    scroll.post(new Runnable() {
-                        @Override public void run() {
-                            scroll.smoothScrollTo(0, testBox.getTop());
-                        }
-                    });
-                }
-            }
-        });
-        box.addView(devMenu);
-
         Button changelog = row("История изменений");
         changelog.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
@@ -528,14 +554,14 @@ public class SettingsActivity extends Activity {
             private int taps = 0;
             @Override public void onClick(View v) {
                 taps++;
-                if (taps >= 7) {
+                if (taps >= 5) {
                     testBox.setVisibility(View.VISIBLE);
                     Toast.makeText(SettingsActivity.this,
                             "Тестовые инструменты открыты", Toast.LENGTH_SHORT).show();
                     v.setEnabled(false);
-                } else if (taps >= 4) {
+                } else if (taps >= 3) {
                     Toast.makeText(SettingsActivity.this,
-                            "Ещё " + (7 - taps) + " до тестовых инструментов",
+                            "Ещё " + (5 - taps) + " до тестовых инструментов",
                             Toast.LENGTH_SHORT).show();
                 }
             }
@@ -692,6 +718,19 @@ public class SettingsActivity extends Activity {
         }
     }
 
+    /** Подпись кнопки афиши для теста. */
+    private String promoLabel() {
+        boolean on = getSharedPreferences(Steps.PREFS, MODE_PRIVATE)
+                .getBoolean(NewYear.PREF_FORCE_PROMO, false);
+        return "Реклама ивента: " + (on ? "включена" : "по датам");
+    }
+
+    /** Подпись кнопки ивента для теста. */
+    private String eventLabel() {
+        boolean on = getSharedPreferences(Steps.PREFS, MODE_PRIVATE)
+                .getBoolean(NewYear.PREF_FORCE_EVENT, false);
+        return "Новогодний ивент: " + (on ? "включён" : "по датам");
+    }
     private void toggleService() {
         SharedPreferences p = getSharedPreferences(Steps.PREFS, MODE_PRIVATE);
         boolean on = p.getBoolean(Steps.KEY_SERVICE, false);

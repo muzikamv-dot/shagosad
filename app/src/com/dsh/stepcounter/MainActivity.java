@@ -989,9 +989,287 @@ public class MainActivity extends Activity {
     }
 
     /** Перерисовать вкладку «Ивенты» под текущее состояние: заглушка, анонс или живой ивент. */
+    /** Карточка новогоднего ивента на вкладке «Ивенты». */
+    /** Афиша ивента за 20 дней до старта: картинка и обратный отсчёт на табличке. */
+    /** Афиша ивента: картинка на весь экран вкладки и обратный отсчёт на табличке. */
+    private void buildPromoCard() {
+        final String caption = NewYear.promoCaption();
+        eventBox.setPadding(0, 0, 0, 0);
+
+        final FrameLayout card = new FrameLayout(this);
+        card.setBackgroundColor(0xFF0B1430);
+        card.setClipToOutline(true);
+        card.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Toast.makeText(MainActivity.this,
+                        "Новогодний ивент начнётся 1 декабря", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        ImageView promo = new ImageView(this);
+        int pid = getResources().getIdentifier("ny_promo", "drawable", getPackageName());
+        if (pid != 0) promo.setImageResource(pid);
+        promo.setScaleType(ImageView.ScaleType.FIT_XY);
+        card.addView(promo, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        // отсчёт пишем прямо на деревянной табличке афиши
+        final TextView counter = new TextView(this);
+        counter.setText(caption);
+        counter.setTextSize(30);
+        counter.setTextColor(0xFFFFE9B0);
+        counter.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        counter.setShadowLayer(12f, 0f, 3f, 0xFF000000);
+        counter.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        clp.gravity = Gravity.TOP;
+        clp.leftMargin = dp(46);
+        clp.rightMargin = dp(46);
+        card.addView(counter, clp);
+        card.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+            @Override public void onLayoutChange(View v, int l, int top, int r, int bottom,
+                                                 int ol, int ot, int or, int ob) {
+                int h = bottom - top;
+                if (h <= 0) return;
+                FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) counter.getLayoutParams();
+                // центр таблички в афише — 62,3 % высоты картинки
+                int want = (int) (h * 0.6235f) - counter.getHeight() / 2;
+                if (lp.topMargin != want) {
+                    lp.topMargin = want;
+                    counter.setLayoutParams(lp);
+                }
+            }
+        });
+
+        final LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0);
+        eventBox.addView(card, lp);
+
+        // картинка занимает всю видимую область вкладки
+        eventPage.post(new Runnable() {
+            @Override public void run() {
+                int h = eventPage.getHeight();
+                if (h <= 0) h = getResources().getDisplayMetrics().heightPixels * 3 / 4;
+                lp.height = h;
+                card.setLayoutParams(lp);
+            }
+        });
+    }
+
+    /** Большая праздничная карточка новогоднего ивента на вкладке «Ивенты». */
+    private void buildNewYearCard() {
+        final int nyYear = NewYear.seasonYear() + 1;
+        FrameLayout card = new FrameLayout(this);
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setCornerRadius(dp(26));
+        cardBg.setColor(0xFF0B1430);
+        cardBg.setStroke(dp(1), 0xFF5C88C8);
+        card.setBackground(cardBg);
+        card.setClipToOutline(true);
+        card.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, NewYearActivity.class));
+            }
+        });
+
+        // фон зимнего леса
+        ImageView nyBg = new ImageView(this);
+        int bgId = getResources().getIdentifier("ny_bg", "drawable", getPackageName());
+        if (bgId != 0) nyBg.setImageResource(bgId);
+        nyBg.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        card.addView(nyBg, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(330)));
+
+        // затемнение снизу под текст
+        View shade = new View(this);
+        GradientDrawable shadeBg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0x00070D1C, 0xE6070D1C});
+        shade.setBackground(shadeBg);
+        FrameLayout.LayoutParams shadeLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(150));
+        shadeLp.gravity = Gravity.BOTTOM;
+        card.addView(shade, shadeLp);
+
+        // ёлка с гирляндой и звездой
+        FrameLayout treeBox = new FrameLayout(this);
+        FrameLayout.LayoutParams tlp = new FrameLayout.LayoutParams(dp(188), dp(206));
+        tlp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        tlp.topMargin = dp(12);
+
+        ImageView nyTree = new ImageView(this);
+        int treeId = getResources().getIdentifier("ny_tree", "drawable", getPackageName());
+        if (treeId != 0) nyTree.setImageResource(treeId);
+        nyTree.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        FrameLayout.LayoutParams trLp = new FrameLayout.LayoutParams(dp(176), dp(200));
+        trLp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        treeBox.addView(nyTree, trLp);
+
+        ImageView nyStar = new ImageView(this);
+        int starId = getResources().getIdentifier("ny_star", "drawable", getPackageName());
+        if (starId != 0) nyStar.setImageResource(starId);
+        FrameLayout.LayoutParams stLp = new FrameLayout.LayoutParams(dp(46), dp(46));
+        stLp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        treeBox.addView(nyStar, stLp);
+
+        // снежинки по краям
+        int[] flakeIds = new int[3];
+        for (int i = 0; i < 3; i++) flakeIds[i] = getResources().getIdentifier("ny_flake_" + (i + 1), "drawable", getPackageName());
+        int[][] flakePos = {{26, 30, 34}, {28, 210, 22}, {250, 44, 28}, {246, 168, 20}, {96, 96, 16}};
+        for (int i = 0; i < flakePos.length; i++) {
+            ImageView fl = new ImageView(this);
+            int fid = flakeIds[i % 3];
+            if (fid != 0) fl.setImageResource(fid);
+            FrameLayout.LayoutParams flp = new FrameLayout.LayoutParams(dp(flakePos[i][2]), dp(flakePos[i][2]));
+            flp.leftMargin = dp(flakePos[i][0]);
+            flp.topMargin = dp(flakePos[i][1]);
+            card.addView(fl, flp);
+        }
+
+        card.addView(treeBox, tlp);
+
+        // текстовый блок снизу
+        LinearLayout info = new LinearLayout(this);
+        info.setOrientation(LinearLayout.VERTICAL);
+        info.setPadding(dp(18), 0, dp(18), dp(16));
+        FrameLayout.LayoutParams infoLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        infoLp.gravity = Gravity.BOTTOM;
+
+        TextView title = new TextView(this);
+        title.setText("НОВОГОДНЯЯ ЁЛКА · " + nyYear);
+        title.setTextSize(15);
+        title.setLetterSpacing(0.10f);
+        title.setTextColor(0xFFF6DFA6);
+        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        info.addView(title);
+
+        int opened = NewYear.openedCount(game);
+        TextView sub = new TextView(this);
+        sub.setText(opened == 0
+                ? "Открой первое окошко адвента и наряди ёлку"
+                : "Открыто " + opened + " из " + NewYear.DAYS + " · игрушки ждут на ёлке");
+        sub.setTextSize(12);
+        sub.setTextColor(0xFFCBD9F0);
+        sub.setPadding(0, dp(4), 0, dp(10));
+        info.addView(sub);
+
+        // полоска прогресса
+        FrameLayout barBox = new FrameLayout(this);
+        GradientDrawable barBg = new GradientDrawable();
+        barBg.setCornerRadius(dp(4));
+        barBg.setColor(0x55FFFFFF);
+        barBox.setBackground(barBg);
+        LinearLayout.LayoutParams bblp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(6));
+        bblp.bottomMargin = dp(12);
+        info.addView(barBox, bblp);
+
+        View barFill = new View(this);
+        GradientDrawable fillBg = new GradientDrawable();
+        fillBg.setCornerRadius(dp(4));
+        fillBg.setColor(0xFFF0D48A);
+        barFill.setBackground(fillBg);
+        int fillW = (int) (getResources().getDisplayMetrics().widthPixels * 0.5f
+                * Math.max(0, Math.min(1, opened / (float) NewYear.DAYS)));
+        if (fillW < dp(4) && opened > 0) fillW = dp(4);
+        barBox.addView(barFill, new FrameLayout.LayoutParams(fillW, dp(6)));
+
+        TextView btn = new TextView(this);
+        btn.setText("Открыть ёлку");
+        btn.setTextSize(14);
+        btn.setTextColor(0xFF0B1020);
+        btn.setGravity(Gravity.CENTER);
+        btn.setPadding(dp(20), dp(12), dp(20), dp(12));
+        GradientDrawable btnBg = new GradientDrawable();
+        btnBg.setCornerRadius(dp(18));
+        btnBg.setColor(0xFFF0D48A);
+        btn.setBackground(btnBg);
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, NewYearActivity.class));
+            }
+        });
+        info.addView(btn);
+
+        card.addView(info, infoLp);
+
+        LinearLayout.LayoutParams nylp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(330));
+        nylp.bottomMargin = dp(18);
+        eventBox.addView(card, nylp);
+
+        // --- блоки ниже, чтобы вкладка не пустовала ---
+        TextView howTitle = new TextView(this);
+        howTitle.setText("КАК ЭТО РАБОТАЕТ");
+        howTitle.setTextSize(11);
+        howTitle.setLetterSpacing(0.10f);
+        howTitle.setTextColor(Theme.FAINT);
+        LinearLayout.LayoutParams htlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        htlp.topMargin = dp(6);
+        htlp.bottomMargin = dp(8);
+        eventBox.addView(howTitle, htlp);
+
+        String[][] steps = {
+                {"ny_orn_03", "Открывай окошко — внутри украшение для ёлки"},
+                {"ny_orn_09", "Тяни игрушку из коробки в любое место экрана"},
+                {"ny_star", "Долгое нажатие — вернуть игрушку в коробку"}
+        };
+        for (String[] step : steps) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            GradientDrawable rowBg = new GradientDrawable();
+            rowBg.setCornerRadius(dp(16));
+            rowBg.setColor(0xFF101A2E);
+            rowBg.setStroke(dp(1), 0xFF243652);
+            row.setBackground(rowBg);
+            row.setPadding(dp(12), dp(10), dp(12), dp(10));
+
+            ImageView icon = new ImageView(this);
+            int rid = getResources().getIdentifier(step[0], "drawable", getPackageName());
+            if (rid != 0) icon.setImageResource(rid);
+            icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            row.addView(icon, new LinearLayout.LayoutParams(dp(30), dp(30)));
+
+            TextView text = new TextView(this);
+            text.setText(step[1]);
+            text.setTextSize(12.5f);
+            text.setTextColor(0xFFC9D8EE);
+            LinearLayout.LayoutParams tlp2 = new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            tlp2.leftMargin = dp(12);
+            row.addView(text, tlp2);
+
+            LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rlp.bottomMargin = dp(8);
+            eventBox.addView(row, rlp);
+        }
+
+        TextView tip = new TextView(this);
+        tip.setText("Открытка «Ёлка-" + nyYear + "» собирается на экране ёлки — кнопка в шапке.");
+        tip.setTextSize(11.5f);
+        tip.setTextColor(0xFF7E92B0);
+        tip.setPadding(dp(4), dp(6), dp(4), dp(18));
+        eventBox.addView(tip);
+    }
+
+
     private void rebuildEvents() {
         if (eventBox == null) return;
         eventBox.removeAllViews();
+        // 1 декабря — 12 января ивент; за 20 дней до старта — афиша с отсчётом.
+        if (NewYear.active(this)) {
+            buildNewYearCard();
+            return;
+        }
+        if (NewYear.promoActive(this)) {
+            buildPromoCard();
+            return;
+        }
+
 
         if (Event.finished(this)) {
             // ленту тут не показываем: она относится к прошедшему ивенту.

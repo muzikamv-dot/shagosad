@@ -39,6 +39,16 @@ public class GameState {
     public boolean eventSeed = false;
     public int eventStage = 0;
     public boolean eventCard = false;
+
+    // ---- новогодний ивент: адвент-календарь и украшенная ёлка ----
+    /** Какие окошки адвента открыты: бит (day-1) = 1. */
+    public int nyMask = 0;
+    /** Украшения на ёлке: "id:x,y;id:x,y" — координаты в долях площади сцены (0..1). */
+    public String nyPlaced = "";
+
+    /** Собрана ли открытка «Ёлка-2026». */
+    public boolean nyCard = false;
+
     public int points = 0;
     /** Сколько очков заработано за всё время: от этого считается уровень, покупки его не снижают. */
     public int earned = 0;
@@ -154,6 +164,9 @@ public class GameState {
         g.eventSeed = o.optBoolean("evSeed", false);
         g.eventStage = o.optInt("evStage", 0);
         g.eventCard = o.optBoolean("evCard", false);
+        g.nyMask = o.optInt("nyMask", 0);
+        g.nyPlaced = o.optString("nyPlaced", "");
+        g.nyCard = o.optBoolean("nyCard", false);
             g.hoes = o.optInt("hoes", 0);
             g.shovels = o.optInt("shovels", 0);
             g.checkDay = o.optString("checkDay", "");
@@ -287,6 +300,9 @@ public class GameState {
         eventSeed = false;
         eventStage = 0;
         eventCard = false;
+        nyMask = 0;
+        nyPlaced = "";
+        nyCard = false;
         stage[0] = 0;
         species[0] = 0;
         totalSteps = 0;
@@ -428,6 +444,9 @@ public class GameState {
         o.put("evSeed", eventSeed);
         o.put("evStage", eventStage);
         o.put("evCard", eventCard);
+        o.put("nyMask", nyMask);
+        o.put("nyPlaced", nyPlaced);
+        o.put("nyCard", nyCard);
             o.put("points", points);
             o.put("earned", earned);
             o.put("neglect", neglect);

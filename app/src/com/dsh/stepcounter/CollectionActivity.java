@@ -159,6 +159,26 @@ public class CollectionActivity extends Activity {
         slp.topMargin = dp(8);
         for (int i = 0; i < 4; i++) {
             // первый слот — праздничный цветок, если открытка уже получена
+            // ёлка: отдельный слот, если собрана новогодняя открытка
+            if (i == 1 && game.nyCard) {
+                ImageView nySlot = new ImageView(this);
+                int nyId = getResources().getIdentifier("ny_tree", "drawable", getPackageName());
+                if (nyId != 0) nySlot.setImageResource(nyId);
+                nySlot.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                GradientDrawable nyBg = new GradientDrawable();
+                nyBg.setColor(0xFF16233F);
+                nyBg.setCornerRadius(dp(16));
+                nyBg.setStroke(dp(1), 0xFF5C88C8);
+                nySlot.setBackground(nyBg);
+                nySlot.setPadding(dp(6), dp(6), dp(6), dp(6));
+                nySlot.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) { openNewYearCard(); }
+                });
+                LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(0, dp(104), 1f);
+                nlp.rightMargin = dp(8);
+                slots.addView(nySlot, nlp);
+                continue;
+            }
             if (i == 0 && game.eventCard) {
                 ImageView got = new ImageView(this);
                 int rid = getResources().getIdentifier("event_stage_20", "drawable", getPackageName());
@@ -274,6 +294,44 @@ public class CollectionActivity extends Activity {
         return null;
     }
 
+    /** Новогодняя открытка: рендерим заново из текущего состояния ёлки. */
+    private void openNewYearCard() {
+        final Bitmap bmp = Postcard.renderTree(this, game.nyPlaced, NewYear.openedCount(game));
+        if (bmp == null) return;
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(12), dp(12), dp(12), dp(4));
+
+        ImageView iv = new ImageView(this);
+        iv.setImageBitmap(bmp);
+        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        int h = (int) (getResources().getDisplayMetrics().heightPixels * 0.55f);
+        box.addView(iv, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, h));
+
+        TextView caption = new TextView(this);
+        caption.setText("Ёлка-" + (NewYear.seasonYear() + 1) + " · новогодний ивент");
+        caption.setTextColor(Theme.TEXT);
+        caption.setTextSize(13);
+        caption.setGravity(Gravity.CENTER);
+        caption.setPadding(0, dp(8), 0, 0);
+        box.addView(caption);
+
+        new AlertDialog.Builder(this)
+                .setTitle("Ёлка-" + (NewYear.seasonYear() + 1))
+                .setView(box)
+                .setPositiveButton("Сохранить в галерею", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        boolean ok = Postcard.saveToGallery(CollectionActivity.this, bmp, ("ШагоСад-Ёлка-" + (NewYear.seasonYear() + 1)));
+                        Toast.makeText(CollectionActivity.this,
+                                ok ? ("Сохранено: Pictures/Сад/ШагоСад-Ёлка-" + (NewYear.seasonYear() + 1) + ".png") : "Не удалось сохранить",
+                                Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton("Закрыть", null)
+                .show();
+    }
     private void showCard(final GameState.Card card, Bitmap bmp) {
         if (bmp == null || isFinishing()) return;
 

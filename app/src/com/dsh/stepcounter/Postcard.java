@@ -8,6 +8,7 @@ import android.provider.MediaStore;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.Matrix;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
@@ -320,5 +321,201 @@ public final class Postcard {
         if (bmp == null) return false;
         return save(ctx, bmp, name) != null;
 
+    }
+
+    // ================= новогодняя открытка «Ёлка-2026» =================
+
+    /** Рисует поздравительную открытку: ёлка игрока, «С Новым годом» и пожелание. */
+    public static Bitmap renderTree(Context ctx, String placed, int opened) {
+        final int W = 1080, H = 1920;
+        Bitmap out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+
+        Bitmap bg = load(ctx, "ny_bg");
+        Bitmap drift = load(ctx, "ny_drift");
+        Bitmap tree = load(ctx, "ny_tree");
+        Bitmap garland = load(ctx, "ny_garland");
+
+        if (bg != null) {
+            float k = Math.max(W / (float) bg.getWidth(), H / (float) bg.getHeight());
+            float dw = bg.getWidth() * k, dh = bg.getHeight() * k;
+            c.drawBitmap(bg, null, new RectF((W - dw) / 2f, (H - dh) / 2f,
+                    (W + dw) / 2f, (H + dh) / 2f), p);
+        } else {
+            c.drawColor(0xFF0B1020);
+        }
+
+        Paint top = new Paint();
+        top.setShader(new LinearGradient(0, 0, 0, H * 0.25f,
+                new int[]{0xB3080D1C, 0x00080D1C}, new float[]{0f, 1f}, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, W, H * 0.25f, top);
+
+        // сугроб прижат к самому низу
+        RectF dr = null;
+        if (drift != null) {
+            float dw = W * 1.02f;
+            float dh = dw * drift.getHeight() / (float) drift.getWidth();
+            float bottom = H - H * 0.004f;
+            dr = new RectF((W - dw) / 2f, bottom - dh, (W + dw) / 2f, bottom);
+        }
+
+        // ёлка высокая, ствол уходит в сугроб
+        RectF tr = null;
+        if (tree != null) {
+            float th = H * 0.70f;
+            float tw = th * tree.getWidth() / (float) tree.getHeight();
+            float bottom = (dr != null ? dr.bottom - dr.height() * 0.45f : H - H * 0.08f);
+            float treeTop = bottom - th;
+            tr = new RectF((W - tw) / 2f, treeTop, (W + tw) / 2f, bottom);
+        }
+
+        if (dr != null) c.drawBitmap(drift, null, dr, p);
+
+        if (tr != null) {
+            Paint shadow = new Paint(Paint.ANTI_ALIAS_FLAG);
+            shadow.setColor(0x66000000);
+            float sw = tr.width() * 0.24f, sh = H * 0.008f;
+            c.drawOval(new RectF(tr.centerX() - sw, tr.bottom - sh / 2f,
+                    tr.centerX() + sw, tr.bottom + sh / 2f), shadow);
+            c.drawBitmap(tree, null, tr, p);
+        }
+
+        if (garland != null && tr != null) {
+            float[] fracs = {0.33f, 0.55f, 0.75f};
+            float[] wfr = {0.52f, 0.70f, 0.88f};
+            for (int i = 0; i < fracs.length; i++) {
+                float y = tr.top + tr.height() * fracs[i];
+                float segW = tr.width() * wfr[i];
+                float segH = garland.getHeight() * segW / (float) garland.getWidth();
+                Matrix m = new Matrix();
+                m.postRotate(i % 2 == 0 ? -3.5f : 3.5f, tr.centerX(), y);
+                c.save();
+                c.concat(m);
+                c.drawBitmap(garland, null, new RectF(tr.centerX() - segW / 2f, y - segH / 2f,
+                        tr.centerX() + segW / 2f, y + segH / 2f), p);
+                c.restore();
+            }
+        }
+
+        // украшения — в тех же местах, что на экране: считаем их положение
+        // относительно ёлки по геометрии игрового экрана и переносим на карту
+        if (placed != null && tr != null && tree != null && drift != null) {
+            float wS = ctx.getResources().getDisplayMetrics().widthPixels;
+            float hS = ctx.getResources().getDisplayMetrics().heightPixels;
+            float dwS = wS * 1.12f;
+            float dhS = dwS * drift.getHeight() / (float) drift.getWidth();
+            float bottomDriftS = hS - hS * 0.005f;
+            float thS = hS * 0.66f;
+            float twS = thS * tree.getWidth() / (float) tree.getHeight();
+            float bottomTreeS = bottomDriftS - dhS * 0.55f;
+            float topTreeS = bottomTreeS - thS;
+
+            float base = W * 0.072f;
+            for (String part : placed.split(";")) {
+                if (part.trim().isEmpty()) continue;
+                String[] kv = part.split(":");
+                if (kv.length != 2) continue;
+                String[] xy = kv[1].split(",");
+                if (xy.length != 2) continue;
+                int id;
+                float nx, ny;
+                try {
+                    id = Integer.parseInt(kv[0]);
+                    nx = Float.parseFloat(xy[0]);
+                    ny = Float.parseFloat(xy[1]);
+                } catch (NumberFormatException e) {
+                    continue;
+                }
+                Bitmap b = load(ctx, String.format("ny_orn_%02d", id + 1));
+                if (b == null) continue;
+                boolean topper = id == NewYear.TOP_ORNAMENT;
+                float size = topper ? base * 1.9f : base;
+                float k = size / Math.max(b.getWidth(), b.getHeight());
+                float bw = b.getWidth() * k;
+                float bh = b.getHeight() * k;
+
+                // положение внутри ёлки на экране (0 — верх, 1 — низ)
+                float relY = (ny * hS - topTreeS) / Math.max(1f, thS);
+                float relX = ((nx * wS) - (wS / 2f)) / Math.max(1f, twS) + 0.5f;
+                float cx0 = tr.left + relX * tr.width();
+                float cy0 = tr.top + relY * tr.height();
+                c.drawBitmap(b, null, new RectF(cx0 - bw / 2f, cy0 - bh / 2f,
+                        cx0 + bw / 2f, cy0 + bh / 2f), p);
+            }
+        }
+
+        // ---- заголовок ----
+        int nyYear = NewYear.seasonYear() + 1;
+        Paint big = new Paint(Paint.ANTI_ALIAS_FLAG);
+        big.setColor(0xFFFFFFFF);
+        big.setTextAlign(Paint.Align.CENTER);
+        big.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
+        big.setShadowLayer(18f, 0f, 6f, 0xCC000000);
+        big.setTextSize(74);
+        c.drawText("С НОВЫМ", W / 2f, 128f, big);
+
+        Paint year = new Paint(Paint.ANTI_ALIAS_FLAG);
+        year.setColor(0xFFFFD772);
+        year.setTextAlign(Paint.Align.CENTER);
+        year.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
+        year.setShadowLayer(20f, 0f, 6f, 0xCC000000);
+        year.setTextSize(100);
+        c.drawText(String.valueOf(nyYear), W / 2f, 228f, year);
+
+        Paint yearTail = new Paint(Paint.ANTI_ALIAS_FLAG);
+        yearTail.setColor(0xFFFFFFFF);
+        yearTail.setTextAlign(Paint.Align.CENTER);
+        yearTail.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
+        yearTail.setLetterSpacing(0.10f);
+        yearTail.setShadowLayer(18f, 0f, 5f, 0xCC000000);
+        yearTail.setTextSize(56);
+        c.drawText("ГОДОМ!", W / 2f, 292f, yearTail);
+
+        // ---- поздравление: лёгкая плашка, сквозь неё видно сугроб и ствол ----
+        float plateTop = H - 250f;
+        float plateBottom = H - 34f;
+        Paint plate = new Paint(Paint.ANTI_ALIAS_FLAG);
+        plate.setColor(0x5A0A1424);
+        RectF plateR = new RectF(W * 0.05f, plateTop, W * 0.95f, plateBottom);
+        c.drawRoundRect(plateR, 38f, 38f, plate);
+        Paint plateStroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+        plateStroke.setStyle(Paint.Style.STROKE);
+        plateStroke.setStrokeWidth(3f);
+        plateStroke.setColor(0x88FFD772);
+        c.drawRoundRect(plateR, 38f, 38f, plateStroke);
+
+        Paint wish = new Paint(Paint.ANTI_ALIAS_FLAG);
+        wish.setColor(0xFFFFFFFF);
+        wish.setTextAlign(Paint.Align.CENTER);
+        wish.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        wish.setShadowLayer(14f, 0f, 3f, 0xFF000000);
+        wish.setTextSize(40);
+        float baseY = plateTop + 72f;
+        c.drawText("Пусть год принесёт больше прогулок,", W / 2f, baseY, wish);
+        c.drawText("тёплых дней и цветущих садов.", W / 2f, baseY + 52f, wish);
+
+        Paint wish2 = new Paint(Paint.ANTI_ALIAS_FLAG);
+        wish2.setColor(0xFFFFD772);
+        wish2.setTextAlign(Paint.Align.CENTER);
+        wish2.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        wish2.setShadowLayer(14f, 0f, 3f, 0xFF000000);
+        wish2.setTextSize(38);
+        c.drawText("Спасибо, что гуляли вместе с нами!", W / 2f, baseY + 112f, wish2);
+
+        return out;
+    }
+    /** Наступающий год: для сезона декабря 2026 — 2027. */
+    private static int currentNewYear() {
+        return NewYear.seasonYear() + 1;
+    }
+
+    private static float lerp(float a, float b, float t) {
+        return a + (b - a) * Math.max(0f, Math.min(1f, t));
+    }
+
+    private static Bitmap load(Context ctx, String name) {
+        int id = ctx.getResources().getIdentifier(name, "drawable", ctx.getPackageName());
+        return id == 0 ? null : BitmapFactory.decodeResource(ctx.getResources(), id);
     }
 }
