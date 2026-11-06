@@ -402,6 +402,7 @@ public class SettingsActivity extends Activity {
                             @Override public void onClick(DialogInterface d, int w) {
                                 game.nyMask = 0;
                                 game.nyPlaced = "";
+                                game.nyCard = false;
                                 game.save(SettingsActivity.this);
                                 Toast.makeText(SettingsActivity.this,
                                         "Новогодний ивент сброшен", Toast.LENGTH_SHORT).show();
@@ -564,13 +565,15 @@ public class SettingsActivity extends Activity {
         // О ПРИЛОЖЕНИИ
         box.addView(section("О ПРИЛОЖЕНИИ"));
 
-        // Обновление прямо с GitHub: проверка версии, скачивание и установка
-        updateBtn = row("Обновление: проверить");
-        box.addView(updateBtn);
-        updateBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { onUpdateClicked(); }
-        });
-        checkUpdates(false);
+        // в версии для магазина обновления приходят из RuStore, кнопка не нужна
+        if (!AppFlavor.STORE) {
+            updateBtn = row("Обновление: проверить");
+            box.addView(updateBtn);
+            updateBtn.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { onUpdateClicked(); }
+            });
+            checkUpdates(false);
+        }
         Button changelog = row("История изменений");
         changelog.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {

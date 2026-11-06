@@ -505,6 +505,93 @@ public final class Postcard {
 
         return out;
     }
+
+    /** Маленькое превью наряженной ёлки для коллекции: фон, ёлка, гирлянда, игрушки, звезда. */
+    public static Bitmap renderTreeThumb(Context ctx, String placed) {
+        final int W = 240, H = 300;
+        Bitmap out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+
+        // ночное небо
+        Paint sky = new Paint();
+        sky.setShader(new LinearGradient(0, 0, 0, H,
+                new int[]{0xFF16264A, 0xFF0A1428}, new float[]{0f, 1f}, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, W, H, sky);
+
+        Bitmap tree = load(ctx, "ny_tree");
+        Bitmap garland = load(ctx, "ny_garland");
+        Bitmap drift = load(ctx, "ny_drift");
+
+        // сугроб
+        if (drift != null) {
+            float dw = W * 1.04f;
+            float dh = dw * drift.getHeight() / (float) drift.getWidth();
+            c.drawBitmap(drift, null, new RectF((W - dw) / 2f, H - dh - 4f, (W + dw) / 2f, H - 4f), p);
+        }
+
+        RectF tr = null;
+        if (tree != null) {
+            float th = H * 0.80f;
+            float tw = th * tree.getWidth() / (float) tree.getHeight();
+            tr = new RectF((W - tw) / 2f, H * 0.86f - th, (W + tw) / 2f, H * 0.86f);
+            c.drawBitmap(tree, null, tr, p);
+        }
+
+        // гирлянды
+        if (garland != null && tr != null) {
+            float[] fracs = {0.33f, 0.55f, 0.75f};
+            float[] wfr = {0.52f, 0.70f, 0.88f};
+            for (int i = 0; i < fracs.length; i++) {
+                float y = tr.top + tr.height() * fracs[i];
+                float segW = tr.width() * wfr[i];
+                float segH = garland.getHeight() * segW / (float) garland.getWidth();
+                Matrix m = new Matrix();
+                m.postRotate(i % 2 == 0 ? -3.5f : 3.5f, tr.centerX(), y);
+                c.save();
+                c.concat(m);
+                c.drawBitmap(garland, null, new RectF(tr.centerX() - segW / 2f, y - segH / 2f,
+                        tr.centerX() + segW / 2f, y + segH / 2f), p);
+                c.restore();
+            }
+        }
+
+        // игрушки: макушка всегда на верхушке, остальные по своим местам
+        if (placed != null && tr != null) {
+            float base = W * 0.085f;
+            for (String part : placed.split(";")) {
+                if (part.trim().isEmpty()) continue;
+                String[] kv = part.split(":");
+                if (kv.length != 2) continue;
+                String[] xy = kv[1].split(",");
+                if (xy.length != 2) continue;
+                int id;
+                float nx, ny;
+                try {
+                    id = Integer.parseInt(kv[0]);
+                    nx = Float.parseFloat(xy[0]);
+                    ny = Float.parseFloat(xy[1]);
+                } catch (NumberFormatException e) {
+                    continue;
+                }
+                Bitmap b = load(ctx, String.format("ny_orn_%02d", id + 1));
+                if (b == null) continue;
+                boolean topper = id == NewYear.TOP_ORNAMENT;
+                float size = topper ? base * 1.9f : base;
+                float k = size / Math.max(b.getWidth(), b.getHeight());
+                float bw = b.getWidth() * k;
+                float bh = b.getHeight() * k;
+                float cx0 = topper ? tr.centerX()
+                        : lerp(tr.left + tr.width() * 0.16f, tr.right - tr.width() * 0.16f, nx);
+                float cy0 = topper ? tr.top + bh * 0.2f
+                        : lerp(tr.top + tr.height() * 0.16f, tr.bottom - tr.height() * 0.02f,
+                                Math.max(0f, Math.min(1f, ny)));
+                c.drawBitmap(b, null, new RectF(cx0 - bw / 2f, cy0 - bh / 2f,
+                        cx0 + bw / 2f, cy0 + bh / 2f), p);
+            }
+        }
+        return out;
+    }
     /** Наступающий год: для сезона декабря 2026 — 2027. */
     private static int currentNewYear() {
         return NewYear.seasonYear() + 1;

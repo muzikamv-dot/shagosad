@@ -5,7 +5,8 @@
 param(
     [string]$Out = 'out-pc',
     [switch]$Install,
-    [switch]$FreshRes
+    [switch]$FreshRes,
+    [switch]$Store
 )
 
 # Continue, а не Stop: PowerShell 5.1 считает любой stderr нативной программы
@@ -79,6 +80,11 @@ Write-Host ("      base.apk: {0} МБ, {1}s" -f [math]::Round((Get-Item "$out\ba
 # ---------- 3/5 javac ----------
 $phase.Restart()
 Step 3 'javac'
+# Флейвор сборки: в магазинной версии обновления приходят из RuStore, кнопка не нужна.
+$flavor = Join-Path $app 'src\com\dsh\stepcounter\AppFlavor.java'
+$flavorBody = "package com.dsh.stepcounter;`n`n/** Флейвор сборки: true — версия для магазина (обновления из RuStore). */`npublic final class AppFlavor {`n    public static final boolean STORE = $($Store.IsPresent.ToString().ToLower());`n}`n"
+[IO.File]::WriteAllText($flavor, $flavorBody, (New-Object Text.UTF8Encoding($false)))
+Write-Host ("      флейвор: {0}" -f $(if ($Store) { 'магазин (без обновлялки)' } else { 'GitHub (с обновлялкой)' })) -ForegroundColor DarkGray
 $sources = @(Get-ChildItem "$app\src" -Recurse -Filter *.java | ForEach-Object { $_.FullName })
 $sources += @(Get-ChildItem "$out\gen" -Recurse -Filter R.java | ForEach-Object { $_.FullName })
 # ASCII без BOM: javac не переносит BOM в @argfile и падает на «Invalid filename»

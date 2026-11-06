@@ -140,11 +140,11 @@ public class MainActivity extends Activity {
         holder.addView(content, new android.widget.FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(holder);
-
-        // при запуске проверяем обновление: если вышла новая версия — окно с двумя кнопками
-        getWindow().getDecorView().post(new Runnable() {
-            @Override public void run() { Updater.promptIfUpdate(MainActivity.this); }
-        });
+        if (!AppFlavor.STORE) {
+            getWindow().getDecorView().post(new Runnable() {
+                @Override public void run() { Updater.promptIfUpdate(MainActivity.this); }
+            });
+        }
 
         // Награды: всё, что получено и ещё ни разу не показывалось, проигрываем
         // по очереди полноэкранно. После обновления сюда попадут и старые медали.

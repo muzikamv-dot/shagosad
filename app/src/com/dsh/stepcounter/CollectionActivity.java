@@ -162,9 +162,7 @@ public class CollectionActivity extends Activity {
             // ёлка: отдельный слот, если собрана новогодняя открытка
             if (i == 1 && game.nyCard) {
                 ImageView nySlot = new ImageView(this);
-                int nyId = getResources().getIdentifier("ny_tree", "drawable", getPackageName());
-                if (nyId != 0) nySlot.setImageResource(nyId);
-                nySlot.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                nySlot.setImageBitmap(Postcard.renderTreeThumb(this, game.nyPlaced));
                 GradientDrawable nyBg = new GradientDrawable();
                 nyBg.setColor(0xFF16233F);
                 nyBg.setCornerRadius(dp(16));
