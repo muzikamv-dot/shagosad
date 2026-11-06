@@ -241,10 +241,33 @@ public final class Updater {
 
     /** Окно при запуске: «Есть обновление» с кнопками «Позже» и «Обновить». */
     public static void promptIfUpdate(final Activity activity) {
+        promptAttempt(activity, 0);
+    }
+
+    /**
+     * Проверка с повторами: на мобильной сети первый запрос иногда не проходит,
+     * и раньше окно просто не показывалось. Теперь до трёх попыток.
+     */
+    private static void promptAttempt(final Activity activity, final int attempt) {
         check(activity, new Callback() {
             @Override public void done(Info info, boolean available, String error) {
-                if (!available || info == null || activity.isFinishing()) return;
-                showDialog(activity, info);
+                android.util.Log.i("Updater", "попытка " + (attempt + 1) + ": info="
+                        + (info == null ? "null" : info.versionName + "/" + info.versionCode)
+                        + " available=" + available + " error=" + error);
+                if (info == null) {
+                    if (attempt < 2 && !activity.isFinishing()) {
+                        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                            @Override public void run() { promptAttempt(activity, attempt + 1); }
+                        }, 3000);
+                    }
+                    return;
+                }
+                if (!available || activity.isFinishing()) return;
+                try {
+                    showDialog(activity, info);
+                } catch (Throwable th) {
+                    android.util.Log.e("Updater", "окно не показалось", th);
+                }
             }
         });
     }
