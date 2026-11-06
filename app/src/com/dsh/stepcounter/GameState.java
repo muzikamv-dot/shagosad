@@ -581,18 +581,27 @@ public class GameState {
             waterProgress = 0;
         }
 
-        // если остался «хвост» от старой версии — выравниваем по целым лейкам
-        if (stepsMark % cost != 0) stepsMark = (stepsMark / cost) * cost;
-        // stepsMark — сколько шагов сегодня уже превращено в лейки.
-        // Остаток считаем от него, а не «копим», поэтому число всегда сходится
-        // с шагами за сегодня и не тянется со вчерашнего дня.
-        if (stepsToday < stepsMark) stepsMark = 0;   // счётчик обнулился
-        int add = (stepsToday - stepsMark) / cost;
-        if (add > 0) {
-            water += add;
-            stepsMark += add * cost;
+        // Запущенный сад платит меньше: с сорняками лейка копится вдвое дольше,
+        // а у засохшего цветка вода не начисляется совсем.
+        int factor = waterPenalty();
+        if (factor == 0) {
+            stepsMark = stepsToday;   // шаги уходят только в статистику
+            waterProgress = 0;
+        } else {
+            int pay = Math.max(1, cost * factor);
+            // если остался «хвост» от старой версии — выравниваем по целым лейкам
+            if (stepsMark % pay != 0) stepsMark = (stepsMark / pay) * pay;
+            // stepsMark — сколько шагов сегодня уже превращено в лейки.
+            // Остаток считаем от него, а не «копим», поэтому число всегда сходится
+            // с шагами за сегодня и не тянется со вчерашнего дня.
+            if (stepsToday < stepsMark) stepsMark = 0;   // счётчик обнулился
+            int add = (stepsToday - stepsMark) / pay;
+            if (add > 0) {
+                water += add;
+                stepsMark += add * pay;
+            }
+            waterProgress = Math.max(0, Math.min(pay - 1, stepsToday - stepsMark));
         }
-        waterProgress = Math.max(0, Math.min(cost - 1, stepsToday - stepsMark));
 
         if (today.equals(stepsCacheDay)) {
             if (stepsToday > stepsCache) totalSteps += stepsToday - stepsCache;
@@ -607,19 +616,34 @@ public class GameState {
 
     /** Сколько шагов осталось до следующей лейки. */
     public int waterToNext() {
-        int cost = Math.max(1, stepCost());
-        return Math.max(0, cost - waterProgress);
+        if (withered) return 0;
+        int pay = Math.max(1, stepCost()) * Math.max(1, waterPenalty());
+        return Math.max(0, pay - waterProgress);
     }
 
     // ---------------- сорняки, увядание, инструменты ----------------
-
-    /** Цена инструментов: тяпка ≈ 2 дня нормы, лопата ≈ 3 дня (по 300 очков в день). */
-    public static final int HOE_PRICE = 600;
-    public static final int SHOVEL_PRICE = 900;
+    /** Цена инструментов: тяпка 100, лопата 200 очков — доступно с первых дней. */
+    public static final int HOE_PRICE = 100;
+    public static final int SHOVEL_PRICE = 200;
     /** С какого пропущенного дня подряд цветок засыхает. */
     static final int WITHER_AFTER = 3;
     /** После стольких дней отсутствия лопата выдаётся бесплатно, чтобы не запирать. */
     static final int FORGIVE_AFTER = 7;
+
+    /**
+     * Во сколько раз дольше копится лейка: 1 — обычно, 2 — сорняки (половина воды),
+     * 0 — цветок засох и вода не начисляется совсем.
+     */
+    public int waterPenalty() {
+        if (withered) return 0;
+        return weeds > 0 ? 2 : 1;
+    }
+
+    /** Цветок засох: шаги больше не дают воду. */
+    public boolean waterStopped() { return withered; }
+
+    /** Сорняки на грядке: лейка копится вдвое дольше. */
+    public boolean waterHalved() { return !withered && weeds > 0; }
 
     /** Сорняки и засыхание блокируют и полив, и сбор. */
     public boolean plotBlocked() { return withered || weeds > 0; }

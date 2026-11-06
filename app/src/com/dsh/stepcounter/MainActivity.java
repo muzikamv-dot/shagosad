@@ -166,47 +166,8 @@ public class MainActivity extends Activity {
         SharedPreferences sp = getSharedPreferences(Steps.PREFS, MODE_PRIVATE);
         if (!sp.getBoolean("onboarding_off", false)) {
             startActivity(new Intent(this, OnboardingActivity.class));
-        } else {
-            maybeShowApology();
         }
         showTab(0);
-    }
-
-    /**
-     * Извинение за неверный подсчёт шагов: показывается ОДИН раз и больше никогда.
-     * Флаг ставим до показа, чтобы окно не вернулось даже при падении приложения.
-     * Для нового сообщения в следующем релизе достаточно нового имени флага.
-     */
-    private void maybeShowApology() {
-        SharedPreferences p = getSharedPreferences(Steps.PREFS, MODE_PRIVATE);
-        if (p.getBoolean("apology_steps_shown", false)) return;
-        p.edit().putBoolean("apology_steps_shown", true).apply();
-
-        new AlertDialog.Builder(this)
-                .setTitle("Просим прощения за шаги")
-                .setMessage(
-                        "В версиях до 9.9 шаги за день могли занижаться: приложение редко "
-                        + "опрашивало счётчик, и шаги за пропущенное время делились между днями, "
-                        + "уходя во вчерашний. В 9.9 это исправлено — счётчик теперь опрашивается "
-                        + "каждые 15 минут, даже когда приложение закрыто.\n\n"
-
-                        + "ОТКУДА БЕРУТСЯ ШАГИ\n"
-                        + "Телефон считает их отдельным аппаратным счётчиком (step counter) — тем же "
-                        + "источником, что и системное «Здоровье». Он считает только реальные шаги "
-                        + "и почти не тратит батарею.\n\n"
-                        + "Google Fit чаще считает иначе: он обрабатывает акселерометр своим "
-                        + "алгоритмом и засчитывает мелкие шаги и движения, которых аппаратный "
-                        + "счётчик не видит. Поэтому его цифра обычно выше.\n\n"
-
-                        + "КАКОЕ РАСХОЖДЕНИЕ НОРМАЛЬНО\n"
-                        + "• до 5% — точное совпадение\n"
-                        + "• 5–10% — норма, методы подсчёта разные\n"
-                        + "• 15% и больше — это уже ошибка, пришлите скриншоты обоих приложений, "
-                        + "разберёмся\n\n"
-                        + "Мы считаем именно пройденные шаги, а не «активность», поэтому при ходьбе "
-                        + "с телефоном в кармане цифры должны быть близки к системным.")
-                .setPositiveButton("Закрыть", null)
-                .show();
     }
 
     @Override
@@ -223,6 +184,7 @@ public class MainActivity extends Activity {
         refreshAll();
         rebuildEvents();   // вкладка ивентов зависит от даты и тестового флага
         runSync();
+        startLiveSteps();   // живой счётчик: цифра меняется, как только сделан шаг
         ui.removeCallbacks(ticker);
         ui.post(ticker);
         // часы в шапке: обновляем время, дату и город
@@ -234,6 +196,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         resumed = false;
+        stopLiveSteps();
         clockHandler.removeCallbacks(clockTick);
         ui.removeCallbacks(ticker);
         super.onPause();
@@ -854,7 +817,15 @@ public class MainActivity extends Activity {
     private void refreshWaterCard() {
         if (waterCount != null) waterCount.set(game.water);
         if (cardStreak != null) cardStreak.setText(game.streak + " дн.");
-        if (nextLeek != null) nextLeek.setText("до лейки " + Ui.steps(game.waterToNext()));
+        if (nextLeek != null) {
+            if (game.waterStopped()) {
+                nextLeek.setText("цветок засох — шаги не дают воду");
+            } else if (game.waterHalved()) {
+                nextLeek.setText("до лейки " + Ui.steps(game.waterToNext()) + " · сорняки мешают");
+            } else {
+                nextLeek.setText("до лейки " + Ui.steps(game.waterToNext()));
+            }
+        }
     }
 
     private void refreshAll() {
@@ -2272,6 +2243,49 @@ public class MainActivity extends Activity {
             ui.postDelayed(this, 1000);
         }
     };
+
+    // Датчик шагов говорит только когда сделан шаг: пока экран открыт, держим
+    // слушатель подключённым, иначе цифра «замирает» до следующего пробуждения.
+    private android.hardware.SensorManager liveSensorManager;
+    private android.hardware.Sensor liveSensor;
+    private long liveSyncAt = 0;
+
+    private final android.hardware.SensorEventListener liveListener =
+            new android.hardware.SensorEventListener() {
+                @Override public void onSensorChanged(android.hardware.SensorEvent e) {
+                    long now = System.currentTimeMillis();
+                    if (now - liveSyncAt < 2000) return;   // не чаще раза в 2 секунды
+                    liveSyncAt = now;
+                    runSync();
+                }
+                @Override public void onAccuracyChanged(android.hardware.Sensor s, int a) { }
+            };
+
+    /** Подписаться на живой счётчик шагов, пока экран приложения открыт. */
+    private void startLiveSteps() {
+        try {
+            if (liveSensorManager == null) {
+                liveSensorManager = (android.hardware.SensorManager)
+                        getSystemService(SENSOR_SERVICE);
+            }
+            if (liveSensorManager == null || liveSensor != null) return;
+            liveSensor = liveSensorManager.getDefaultSensor(
+                    android.hardware.Sensor.TYPE_STEP_COUNTER);
+            if (liveSensor == null) return;
+            liveSensorManager.registerListener(liveListener, liveSensor,
+                    android.hardware.SensorManager.SENSOR_DELAY_NORMAL);
+        } catch (Exception ignored) { }
+    }
+
+    private void stopLiveSteps() {
+        try {
+            if (liveSensorManager != null && liveSensor != null) {
+                liveSensorManager.unregisterListener(liveListener);
+            }
+        } catch (Exception ignored) { }
+        liveSensor = null;
+    }
+
 
     private void runSync() {
         if (syncing) return;

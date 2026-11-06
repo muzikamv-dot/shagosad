@@ -382,8 +382,10 @@ public class GardenView extends View {
         label(c, Ui.plural(game.water, "лейка", "лейки", "леек"), pad + 26 * d + tx.measureText(wv), pad + 60 * d, 11, Theme.MUTED, Paint.Align.LEFT, false);
 
         int toNext = game.waterToNext();
-        label(c, "до лейки", w - pad - 20 * d, pad + 28 * d, 9, Theme.FAINT, Paint.Align.RIGHT, false);
-        label(c, Ui.steps(toNext), w - pad - 20 * d, pad + 54 * d, 12, Theme.ACCENT_SOFT, Paint.Align.RIGHT, true);
+        label(c, game.waterStopped() ? "цветок засох" : (game.waterHalved() ? "до лейки · сорняки" : "до лейки"),
+                w - pad - 20 * d, pad + 28 * d, 9, Theme.FAINT, Paint.Align.RIGHT, false);
+        label(c, game.waterStopped() ? "нет воды" : Ui.steps(toNext), w - pad - 20 * d, pad + 54 * d, 12,
+                game.waterStopped() ? Theme.MUTED : Theme.ACCENT_SOFT, Paint.Align.RIGHT, true);
 
         // ---- большая грядка ----
         float cardTop = pad + ch + 14 * d;

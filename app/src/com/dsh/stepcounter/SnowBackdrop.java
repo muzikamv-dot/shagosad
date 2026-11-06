@@ -42,6 +42,11 @@ public final class SnowBackdrop {
         private final float[] angle = new float[COUNT];
         private final int[] kind = new int[COUNT];
         private final int[] alpha = new int[COUNT];
+        private final float[] period;
+        private final float[] phase;
+        private Bitmap glow;
+        private boolean running;
+        private long startMs = android.os.SystemClock.uptimeMillis();
 
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private final Matrix m = new Matrix();
@@ -80,8 +85,28 @@ public final class SnowBackdrop {
                 kind[i] = rnd.nextInt(3);
                 alpha[i] = 30 + rnd.nextInt(70);
             }
+            // мерцание: у каждой снежинки свой ритм, чтобы не мигали хором
+            period = new float[COUNT];
+            phase = new float[COUNT];
+            for (int i2 = 0; i2 < COUNT; i2++) {
+                period[i2] = 4200f + rnd.nextFloat() * 5200f;   // 4–9 секунд
+                phase[i2] = rnd.nextFloat();
+            }
+            glow = makeGlow(48);
             setClickable(false);
             setFocusable(false);
+        }
+
+        /** Мягкое голубое свечение вокруг снежинки: рисуется еле заметно. */
+        private static Bitmap makeGlow(int size) {
+            Bitmap b = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+            Canvas c = new Canvas(b);
+            Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+            p.setShader(new android.graphics.RadialGradient(size / 2f, size / 2f, size / 2f,
+                    new int[]{0x6E7FC4FF, 0x2A7FC4FF, 0x007FC4FF},
+                    new float[]{0f, 0.45f, 1f}, android.graphics.Shader.TileMode.CLAMP));
+            c.drawCircle(size / 2f, size / 2f, size / 2f, p);
+            return b;
         }
 
         @Override
@@ -90,17 +115,52 @@ public final class SnowBackdrop {
         }
 
         @Override
+        protected void onWindowVisibilityChanged(int visibility) {
+            super.onWindowVisibilityChanged(visibility);
+            running = visibility == VISIBLE;
+            if (running) postInvalidateOnAnimation();
+        }
+
+        @Override
+        protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            running = true;
+            startMs = android.os.SystemClock.uptimeMillis();
+            postInvalidateOnAnimation();
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            running = false;
+            super.onDetachedFromWindow();
+        }
+
+        @Override
         protected void onDraw(Canvas c) {
             float w = getWidth();
             float h = getHeight();
             if (w <= 0 || h <= 0) return;
+            long now = android.os.SystemClock.uptimeMillis();
             for (int i = 0; i < COUNT; i++) {
                 Bitmap b = flakes[kind[i] % 3];
                 if (b == null) continue;
                 float s = w * size[i];
                 float x = nx[i] * w;
                 float y = ny[i] * h;
-                paint.setAlpha(alpha[i]);
+                // медленная волна 0…1: свет то чуть ярче, то тише
+                double t = ((now - startMs) / period[i] + phase[i]) % 1.0;
+                float k = (float) (0.5 + 0.5 * Math.sin(t * 2 * Math.PI));
+                float amp = alpha[i] * (0.72f + 0.28f * k);
+
+                // голубое свечение — совсем слабое, только чтобы «дышало»
+                if (glow != null) {
+                    float gs = s * (1.5f + 0.35f * k);
+                    paint.setAlpha(Math.round(20 + 34 * k));
+                    c.drawBitmap(glow, null, new RectF(x - gs / 2f, y - gs / 2f,
+                            x + gs / 2f, y + gs / 2f), paint);
+                }
+
+                paint.setAlpha(Math.round(amp));
                 m.reset();
                 m.postRotate(angle[i], x, y);
                 c.save();
@@ -109,6 +169,7 @@ public final class SnowBackdrop {
                 c.restore();
             }
             paint.setAlpha(255);
+            if (running) postInvalidateOnAnimation();   // кадр на каждый vsync
         }
     }
 }
