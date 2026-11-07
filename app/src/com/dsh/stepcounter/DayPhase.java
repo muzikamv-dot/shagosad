@@ -276,9 +276,6 @@ final class DayPhase {
         c.restoreToCount(skyLayer);
 
         // облака прямо из процента облачности: 0 % — чистое небо, 100 % — сплошная пелена
-        int clouds = cloud < 5 ? 0 : cloud < 25 ? 1 : cloud < 50 ? 2 : cloud < 75 ? 4
-                : cloud < 90 ? 6 : 8;
-        int cloudAlpha = (int) (10 + cloud * 0.82f);
         if (cloud >= 88) {
             // сплошная облачность: ровная пелена сверху, чтобы «хмуро» читалось сразу.
             // Слабая, чтобы не забивать точки стадий и подписи в карточке.
@@ -288,33 +285,12 @@ final class DayPhase {
             c.drawRect(card.left, card.top, card.right, card.top + h * 0.42f, P);
             P.setShader(null);
         }
-        Random cr = new Random(daySeed() + 77);
-        for (int i = 0; i < clouds; i++) {
-            float baseX = cr.nextFloat();
-            float by = card.top + h * (0.08f + cr.nextFloat() * 0.34f);
-            float cw = w * (0.26f + cr.nextFloat() * 0.20f);
-            float speed = 4f + cr.nextFloat() * 6f;
-            float x = card.left - cw + (baseX * (w + cw * 2) + timeSec * speed) % (w + cw * 2);
-            // каждое облако — два мягких пятна, у каждого свой радиальный градиент
-            // от центра: иначе видны круглые кромки и облако похоже на пузыри
-            int a = Math.max(0, Math.min(255, cloudAlpha));
-            softCloud(c, x, by, x + cw, by + cw * 0.26f, a);
-            softCloud(c, x + cw * 0.30f, by - cw * 0.12f, x + cw * 0.92f, by + cw * 0.20f, a);
-        }
+        drawClouds(c, card, d, cloud, alt, night, timeSec, top);
         P.setAlpha(255);
 
-        // земля: заметная полоса ниже горизонта, чтобы горизонт читался
+        // земля: дымка у горизонта, луг с травинками и тень к переднему плану
         float ground = card.bottom - h * 0.20f;
-        P.setShader(new LinearGradient(card.left, ground, card.left, card.bottom,
-                new int[]{0x00000000, 0x26000000, 0x4A000000},
-                new float[]{0f, 0.35f, 1f}, Shader.TileMode.CLAMP));
-        c.drawRect(card.left, ground, card.right, card.bottom, P);
-        P.setShader(null);
-        // тонкая линия горизонта
-        P.setColor(0x1FFFFFFF);
-        P.setStrokeWidth(Math.max(1f, d));
-        c.drawLine(card.left + radius * 0.3f, ground, card.right - radius * 0.3f, ground, P);
-        P.setStrokeWidth(1f);
+        drawGround(c, card, ground, d, night, sun[0], timeSec, cloud, bottom);
 
         // виньетка
         P.setShader(new RadialGradient(card.centerX(), card.centerY(),
@@ -424,6 +400,162 @@ final class DayPhase {
         P.setShader(new RadialGradient(cx, cy, rad,
                 (alpha << 24) | 0xFFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
         c.drawOval(l, t, r, b, P);
+        P.setShader(null);
+    }
+
+    /** Цвет с заданной прозрачностью. */
+    private static int withAlpha(int color, int a) {
+        return (Math.max(0, Math.min(255, a)) << 24) | (color & 0x00FFFFFF);
+    }
+
+    /** Форма облака: из этих «шаров» собирается мягкая кромка, низ — ровный. */
+    private static final float[][] PUFF = {
+            {0.20f, 0.66f, 0.16f}, {0.34f, 0.52f, 0.20f}, {0.48f, 0.44f, 0.22f},
+            {0.62f, 0.50f, 0.19f}, {0.76f, 0.62f, 0.15f}, {0.42f, 0.66f, 0.17f},
+            {0.58f, 0.68f, 0.16f}, {0.28f, 0.70f, 0.13f}
+    };
+
+    /**
+     * Облака по проценту облачности. Каждое собрано из семи мягких шаров:
+     * сверху-слева они светлее, к низу уходят в холодную тень, под облаком —
+     * своя мягкая тень. Цвет зависит от времени: днём белые, на закате тёплые,
+     * ночью сине-серые; дальние облака прозрачнее, поэтому небо выглядит глубже.
+     */
+    private static void drawClouds(Canvas c, RectF card, float d, int cloud,
+                                   float alt, float night, float timeSec, int skyCol) {
+        if (cloud < 5) return;
+        float w = card.width(), h = card.height();
+        int count = cloud < 25 ? 1 : cloud < 50 ? 2 : cloud < 75 ? 3 : cloud < 90 ? 4 : 6;
+        float alphaK = Math.min(1f, 0.30f + cloud / 100f * 0.70f);
+
+        float warm = 0f;
+        if (alt > -8f && alt < 18f) warm = 1f - Math.abs(alt - 5f) / 13f;
+        warm = Math.max(0f, Math.min(1f, warm));
+
+        int lit = blend(0xFFEDF2F8, 0xFFFFD9AE, warm * 0.85f);
+        int shade = blend(0xFFA9B7C8, 0xFFC08A92, warm * 0.55f);
+        lit = blend(lit, 0xFF8B97AC, night * 0.75f);
+        shade = blend(shade, 0xFF3B4760, night * 0.80f);
+        // облако живёт в небе, а не светится на нём: подмешиваем цвет неба
+        lit = blend(lit, skyCol, 0.28f);
+        shade = blend(shade, skyCol, 0.40f);
+
+        Random cr = new Random(daySeed() + 77);
+        for (int i = 0; i < count; i++) {
+            // облака мелкие и разной высоты: крупная «шапка» на полнеба выглядит
+            // нарисованной, а мелкие рваные читаются как настоящее небо
+            float cw = w * (0.15f + cr.nextFloat() * 0.15f);
+            float cy = card.top + h * (0.03f + cr.nextFloat() * 0.32f);
+            float speed = (2.2f + cr.nextFloat() * 3.0f) * (0.4f + cw / w);
+            // раскладываем по ширине равномерно, иначе случайность собирает все
+            // облака в один край и половина неба остаётся пустой
+            float baseX = (i + 0.5f) / count + (cr.nextFloat() - 0.5f) * 0.12f;
+            float span = w + cw * 2f;
+            float x = card.left - cw + ((baseX * span + timeSec * speed * d) % span);
+            int a = (int) (150 * alphaK * (0.50f + cr.nextFloat() * 0.50f));
+            a = (int) (a * (0.55f + 0.45f * (count - i) / (float) count));
+            cloudPuff(c, x, cy, cw, cw * 0.40f, lit, shade, a);
+        }
+    }
+
+    /** Одно облако: мягкие шары и тень под ним. */
+    private static void cloudPuff(Canvas c, float left, float top, float cw, float ch,
+                                  int lit, int shade, int alpha) {
+        if (alpha <= 4) return;
+        P.setStyle(Paint.Style.FILL);
+
+        // ровное основание: без него облако читается как стопка кружков
+        P.setShader(new LinearGradient(left, top + ch * 0.55f, left, top + ch * 0.92f,
+                withAlpha(lit, (int) (alpha * 0.85f)), withAlpha(shade, (int) (alpha * 0.55f)),
+                Shader.TileMode.CLAMP));
+        c.drawOval(left + cw * 0.10f, top + ch * 0.52f,
+                left + cw * 0.90f, top + ch * 0.92f, P);
+        P.setShader(null);
+
+        for (float[] pf : PUFF) {
+            float px = left + cw * pf[0];
+            float py = top + ch * pf[1];
+            float pr = cw * pf[2] * 0.95f;
+            // край растворяется: цвет держится в середине шара и уходит в ноль
+            // на кромке — иначе соседние шары читаются как «пузыри»
+            P.setShader(new RadialGradient(px - pr * 0.22f, py - pr * 0.40f, pr * 1.85f,
+                    new int[]{withAlpha(lit, alpha), withAlpha(lit, (int) (alpha * 0.70f)),
+                              withAlpha(shade, 0)},
+                    new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP));
+            c.drawCircle(px, py, pr * 1.85f, P);
+            P.setShader(null);
+        }
+    }
+
+    /**
+     * Земля: дымка на горизонте, луг с травой и затемнение к переднему плану.
+     * Горизонтальную линию не рисуем — её заменяет мягкая дымка, иначе край
+     * выглядит нарисованным «по линейке».
+     */
+    private static void drawGround(Canvas c, RectF card, float horizon, float d,
+                                   float night, float alt, float timeSec,
+                                   int cloud, int skyCol) {
+        float w = card.width();
+        float h = card.height();
+
+        float warm = 0f;
+        if (alt > -6f && alt < 16f) warm = 1f - Math.abs(alt - 4f) / 12f;
+        warm = Math.max(0f, Math.min(1f, warm));
+
+        // трава приглушённая: пасмурно — олива, на закате — тёплая, ночью — синяя
+        int far = blend(0xFF7FA066, 0xFFB08A5E, warm * 0.40f);
+        int near = blend(0xFF455E39, 0xFF463A2C, warm * 0.30f);
+        float dull = cloud / 100f * 0.35f;
+        far = blend(far, 0xFF8A9484, dull);
+        near = blend(near, 0xFF4C574C, dull);
+        far = blend(far, 0xFF2A3A4C, night * 0.85f);
+        near = blend(near, 0xFF13202C, night * 0.85f);
+
+        // земля начинается чуть выше горизонта и растворяется в небе
+        P.setStyle(Paint.Style.FILL);
+        P.setShader(new LinearGradient(card.left, horizon - 10 * d, card.left, card.bottom,
+                new int[]{withAlpha(skyCol, 0), far, near, blend(near, 0xFF000000, 0.30f)},
+                new float[]{0f, 0.12f, 0.60f, 1f}, Shader.TileMode.CLAMP));
+        c.drawRect(card.left, horizon - 10 * d, card.right, card.bottom, P);
+        P.setShader(null);
+
+        // травяной покров: чем ближе к зрителю, тем крупнее и темнее травинки
+        Random r = new Random(daySeed() * 31L + 5);
+        int blades = 90;
+        float band = card.bottom - horizon;
+        for (int i = 0; i < blades; i++) {
+            float t = r.nextFloat();
+            float y = horizon + band * (0.10f + t * 0.90f);
+            float x = card.left + r.nextFloat() * w;
+            float scale = 0.30f + 0.70f * t;
+            float len = band * 0.085f * scale * (0.7f + r.nextFloat() * 0.6f);
+            float lean = (float) Math.sin(timeSec * 0.8f + i) * len * 0.22f;
+            int col = blend(blend(0xFF9CB877, 0xFF6A874C, r.nextFloat()), near, 0.20f + t * 0.45f);
+            P.setColor(col);
+            P.setAlpha(95 + (int) (t * 105));
+            P.setStyle(Paint.Style.STROKE);
+            P.setStrokeWidth(Math.max(1f, (0.8f + t * 1.2f) * d));
+            P.setStrokeCap(Paint.Cap.ROUND);
+            float mx = x + lean * 0.5f, my = y - len * 0.62f;
+            c.drawLine(x, y, mx, my, P);
+            c.drawLine(mx, my, x + lean, y - len, P);
+        }
+        P.setAlpha(255);
+
+        // дымка: цвет неба мягко заходит на землю, поэтому линия горизонта
+        // не читается как нарисованная «по линейке»
+        P.setStyle(Paint.Style.FILL);
+        P.setShader(new LinearGradient(card.left, horizon - 26 * d, card.left, horizon + 54 * d,
+                new int[]{withAlpha(skyCol, 0), withAlpha(skyCol, 110), withAlpha(skyCol, 0)},
+                new float[]{0f, 0.42f, 1f}, Shader.TileMode.CLAMP));
+        c.drawRect(card.left, horizon - 26 * d, card.right, horizon + 54 * d, P);
+        P.setShader(null);
+
+        // тень у переднего плана: растение стоит «в глубине» кадра
+        P.setShader(new LinearGradient(card.left, card.bottom - h * 0.12f,
+                card.left, card.bottom,
+                new int[]{0x00000000, 0x55000000}, new float[]{0f, 1f}, Shader.TileMode.CLAMP));
+        c.drawRect(card.left, card.bottom - h * 0.12f, card.right, card.bottom, P);
         P.setShader(null);
     }
 

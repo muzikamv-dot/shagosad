@@ -7,6 +7,12 @@ public final class Species {
 
     public static final int COUNT = 365;
 
+    /**
+     * Размер пространства имён для бесконечного сбора: 40 прилагательных × 24 формы
+     * × 30 «хвостов» = 28 800 разных названий. Это ~78 лет по цветку в день.
+     */
+    public static final int NAME_SPACE = 40 * 24 * 30;
+
     public static final String[] FORM = {
             "ромашка", "пион", "мак", "лаванда", "ирис", "тюльпан",
             "лотос", "звезда", "кристалл", "колокольчик", "зонтик", "георгин",
@@ -103,11 +109,23 @@ public final class Species {
     private Species() { }
 
     public static String name(int id) {
-        int i = Math.max(0, id) % COUNT;
-        String adj = MASC[i % FORM.length] ? ADJ_M[i % ADJ_M.length] : ADJ[i % ADJ.length];
-        String form = FORM[i % FORM.length];
-        String tail = TAIL[(i / ADJ.length) % TAIL.length];
-        return adj + " " + form + " " + tail;
+        int i = Math.max(0, id);
+        int adjIdx, formIdx, tailIdx;
+        if (i < COUNT) {
+            // классические 365 видов: те же имена, что и раньше (они уже в открытках)
+            adjIdx = i % ADJ.length;
+            formIdx = i % FORM.length;
+            tailIdx = (i / ADJ.length) % TAIL.length;
+        } else {
+            // дальше — бесконечный сбор: обходим то же пространство другим шагом,
+            // чтобы новые имена не повторяли классические подряд
+            int j = i - COUNT;
+            adjIdx = j % ADJ.length;
+            formIdx = (j / ADJ.length) % FORM.length;
+            tailIdx = (j / (ADJ.length * FORM.length)) % TAIL.length;
+        }
+        String adj = MASC[formIdx] ? ADJ_M[adjIdx] : ADJ[adjIdx];
+        return adj + " " + FORM[formIdx] + " " + TAIL[tailIdx];
     }
 
     public static String wish(int id) {
@@ -214,4 +232,26 @@ public final class Species {
 
     /** Поворот всей головки, градусы: −14…+14, чтобы цветки не стояли «по линейке». */
     public static float headTurn(int id) { return (unit(id, 127) - 0.5f) * 28f; }
+
+    /** Сколько головок на растении: 1…3. Крупные одиночные (пион, мак, гибискус) — всегда одна. */
+    public static int headCount(int id) {
+        int fam = family(id);
+        boolean multi = fam == 0 || fam == 12 || fam == 20 || fam == 23 || fam == 4;
+        if (!multi) return 1;
+        return 1 + pick(id, 131, 3);
+    }
+
+    /** Форма листа: 0 овальный, 1 ланцетный, 2 зубчатый, 3 округлый, 4 сердцевидный,
+     *  5 игольчатый, 6 тройчатый, 7 лопастной, 8 волнистый, 9 поникший,
+     *  10 перистый (рябина, папоротник), 11 рассечённый (укроп), 12 кленовый. */
+    public static int leafForm(int id) { return pick(id, 149, 13); }
+
+    /** Наклон листа вниз: −0,3 (задран) … +0,7 (поник). */
+    public static float leafDroop(int id) { return unit(id, 151) - 0.3f; }
+
+    /** Крап на листе. */
+    public static boolean leafSpots(int id) { return pick(id, 157, 4) == 0; }
+
+    /** Сколько листьев растение выпускает во взрослом виде: 2…5. */
+    public static int leafDensity(int id) { return 2 + pick(id, 163, 4); }
 }

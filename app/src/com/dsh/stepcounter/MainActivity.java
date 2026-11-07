@@ -2051,7 +2051,7 @@ public class MainActivity extends Activity {
         dAvg.setText(fmt(game.totalSteps / days));
         dTotal.setText(fmt(game.totalSteps));
         dDays.setText(String.valueOf(days));
-        dFlowers.setText(game.bloomed.size() + " из " + Species.COUNT);
+        dFlowers.setText(String.valueOf(game.bloomed.size()));
         dSpecies.setText(String.valueOf(game.cards.size()));
     }
 

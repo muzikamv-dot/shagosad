@@ -155,11 +155,13 @@ public final class KawaiiPlant {
         Random rnd = new Random(species * 977L + 13L);
 
         float grow = 0.26f + Math.min(10, Math.max(0, stage)) * 0.074f;   // 0.26 … 1.0
-        // высота своя у каждого вида, но головка обязана влезть в кадр:
-        // иначе крупный цветок срезается верхней кромкой ячейки
-        float headR = size * headFor(Species.family(species), traits(species, 0f));
-        float maxH = Math.max(size * 0.34f, size - headR * 1.32f);
-        float h = Math.min(size * Species.stemHeight(species) * Math.min(1f, grow), maxH);
+        // Головка не должна съедать стебель и листья: её размер ограничен, а стебель
+        // получает приоритет — иначе у крупных соцветий не видно ни стебля, ни листьев.
+        float headR = Math.min(size * headFor(Species.family(species), traits(species, 0f)),
+                size * 0.26f);
+        float hMax = size - headR * 1.25f;
+        float h = Math.min(size * Math.max(Species.stemHeight(species), 0.50f), hMax)
+                * Math.min(1f, grow);
 
         int stemCol = Species.stemColor(species);
         float[] hsv = new float[3];
@@ -228,9 +230,12 @@ public final class KawaiiPlant {
         p.setShader(null);
 
         // ---- листья на узлах стебля ----
-        int leaves = stage <= 1 ? 0 : Math.min(5, 1 + (stage - 1) / 2);
-        int leafForm = Math.abs(species * 7 + 3) % 4;
+        int maxLeaves = Species.leafDensity(species);
+        int leaves = stage <= 1 ? 0 : Math.min(maxLeaves, 1 + (stage - 1) / 2);
+        int leafForm = Species.leafForm(species);
         float spread = Species.leafSpread(species);
+        float droop = Species.leafDroop(species);
+        boolean spots = Species.leafSpots(species);
         for (int i = 0; i < leaves; i++) {
             float t = 0.16f + 0.62f * (i + 0.6f) / Math.max(1, leaves);
             float lx = bx(t, x0, x1, x2, x3);
@@ -242,67 +247,246 @@ public final class KawaiiPlant {
             float ang = (right ? -baseAngle : -(180f - baseAngle));
             float sway = wind * (7f + 5f * (1f - t)) * (right ? 1f : -1f)
                     + (float) Math.sin(time * 1.9f + i * 1.3f) * 2.6f;
-            leaf(c, q, lx, ly, len, ang + sway, leafForm, leafA, leafB, right);
+            leaf(c, q, lx, ly, len, ang + sway, leafForm, leafA, leafB, right, droop, spots);
         }
 
-        // ---- головка ----
+        // ---- головки ----
         if (stage <= 4) {
             bud(c, p, species, x3, y3, size, stage, rnd, wind, time);
         } else {
             float open = Math.min(1f, (stage - 4) / 6f);
             head(c, p, species, x3, y3, size, open, rnd, wind, time, lightX);
+
+            // у части видов цветков несколько: на цветоножках из узлов стебля
+            int heads = Species.headCount(species);
+            for (int i = 1; i < heads; i++) {
+                float side = (i % 2 == 0) ? 1f : -1f;
+                float t = 0.48f + 0.15f * i;
+                float px = bx(t, x0, x1, x2, x3);
+                float py = bx(t, y0, y1, y2, y3);
+                float hx = cx + side * size * (0.19f + 0.05f * i) + lean * 0.4f;
+                float hy = y3 + h * 0.16f + size * 0.07f * (i - 1);
+
+                path.reset();
+                path.moveTo(px, py);
+                path.quadTo(px + side * size * 0.10f, py - h * 0.12f, hx, hy);
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(Math.max(1f, wBase * 0.66f));
+                p.setStrokeCap(Paint.Cap.ROUND);
+                p.setColor(stemCol);
+                c.drawPath(path, p);
+
+                head(c, p, species, hx, hy, size * 0.62f, open * 0.92f,
+                        new Random(species * 31L + i), wind, time, lightX);
+            }
         }
     }
 
     // ---- лист ----
 
-    private static void leaf(Canvas c, Paint p, float x, float y, float len, float angleDeg,
-                             int form, int colLight, int colDark, boolean right) {
-        c.save();
-        c.translate(x, y);
-        c.rotate(angleDeg);
+    /** Ширина листа относительно длины: у игольчатого в шесть раз уже, чем у округлого. */
+    private static float leafWidth(int form) {
+        switch (form) {
+            case 1: return 0.26f;   // ланцетный
+            case 3: return 0.52f;   // округлый
+            case 4: return 0.50f;   // сердцевидный
+            case 5: return 0.10f;   // игольчатый
+            case 8: return 0.56f;   // волнистый
+            case 9: return 0.22f;   // поникший
+            default: return 0.42f;
+        }
+    }
 
-        Path path = new Path();
-        float w = len * (form == 1 ? 0.26f : 0.42f);
-        if (form == 2) {
-            // зубчатый: пила по верхней кромке, низ — плавная дуга назад.
-            path.moveTo(0, 0);
-            int teeth = 5;
-            for (int i = 1; i <= teeth; i++) {
-                float tx = len * i / teeth;
-                path.lineTo(tx - len * 0.05f, -w * 0.62f);
-                path.lineTo(tx, -w * 0.88f);
+    /** Одна листовая пластина: основание в (0,0), кончик на (len,0). */
+    private static void blade(Path path, float len, float w, int form) {
+        path.reset();
+        switch (form) {
+            case 2: {
+                // зубчатый: пила по верхней кромке, низ — плавная дуга назад
+                path.moveTo(0, 0);
+                int teeth = 5;
+                for (int i = 1; i <= teeth; i++) {
+                    float tx = len * i / teeth;
+                    path.lineTo(tx - len * 0.05f, -w * 0.62f);
+                    path.lineTo(tx, -w * 0.88f);
+                }
+                path.lineTo(len, 0);
+                path.quadTo(len * 0.55f, w * 0.62f, 0, 0);
+                break;
             }
-            path.lineTo(len, 0);
-            path.quadTo(len * 0.55f, w * 0.62f, 0, 0);
-        } else if (form == 3) {
-            path.moveTo(0, 0);
-            path.quadTo(len * 0.35f, -w * 1.35f, len, 0);
-            path.quadTo(len * 0.35f, w * 1.35f, 0, 0);
-        } else if (form == 1) {
-            path.moveTo(0, 0);
-            path.quadTo(len * 0.55f, -w, len * 1.06f, 0);
-            path.quadTo(len * 0.55f, w, 0, 0);
-        } else {
-            path.moveTo(0, 0);
-            path.quadTo(len * 0.45f, -w * 1.1f, len, 0);
-            path.quadTo(len * 0.5f, w * 0.95f, 0, 0);
+            case 3: {
+                // округлый
+                path.moveTo(0, 0);
+                path.quadTo(len * 0.35f, -w * 1.35f, len, 0);
+                path.quadTo(len * 0.35f, w * 1.35f, 0, 0);
+                break;
+            }
+            case 4: {
+                // сердцевидный: широкий, с поджатым основанием
+                path.moveTo(len * 0.09f, 0);
+                path.cubicTo(len * 0.05f, -w * 1.40f, len * 0.56f, -w * 1.62f, len, 0);
+                path.cubicTo(len * 0.56f, w * 1.62f, len * 0.05f, w * 1.40f, len * 0.09f, 0);
+                break;
+            }
+            case 5: {
+                // игольчатый: узкая длинная пластина
+                path.moveTo(0, 0);
+                path.quadTo(len * 0.52f, -w * 1.15f, len * 1.04f, 0);
+                path.quadTo(len * 0.52f, w * 1.15f, 0, 0);
+                break;
+            }
+            case 8: {
+                // волнистый: кромка из трёх волн
+                path.moveTo(0, 0);
+                path.quadTo(len * 0.20f, -w * 1.35f, len * 0.45f, -w * 1.05f);
+                path.quadTo(len * 0.62f, -w * 1.38f, len * 0.78f, -w * 0.95f);
+                path.quadTo(len * 0.90f, -w * 0.78f, len, 0);
+                path.quadTo(len * 0.90f, w * 0.78f, len * 0.78f, w * 0.95f);
+                path.quadTo(len * 0.62f, w * 1.38f, len * 0.45f, w * 1.05f);
+                path.quadTo(len * 0.20f, w * 1.35f, 0, 0);
+                break;
+            }
+            case 9: {
+                // поникший: узкий, с подвёрнутым кончиком
+                path.moveTo(0, 0);
+                path.quadTo(len * 0.45f, -w * 1.10f, len * 0.86f, -w * 0.15f);
+                path.quadTo(len * 1.02f, w * 0.45f, len * 0.86f, w * 0.85f);
+                path.quadTo(len * 0.45f, w * 0.55f, 0, 0);
+                break;
+            }
+            case 1: {
+                // ланцетный
+                path.moveTo(0, 0);
+                path.quadTo(len * 0.55f, -w, len * 1.06f, 0);
+                path.quadTo(len * 0.55f, w, 0, 0);
+                break;
+            }
+            default: {
+                // овальный
+                path.moveTo(0, 0);
+                path.quadTo(len * 0.45f, -w * 1.10f, len, 0);
+                path.quadTo(len * 0.50f, w * 0.95f, 0, 0);
+            }
         }
         path.close();
+    }
 
+    private static void leaf(Canvas c, Paint p, float x, float y, float len, float angleDeg,
+                             int form, int colLight, int colDark, boolean right,
+                             float droop, boolean spots) {
+        c.save();
+        c.translate(x, y);
+        // поникший лист опускается вниз, задранный — поднимается
+        c.rotate(angleDeg + droop * 22f);
+
+        Path path = new Path();
+        float w = len * leafWidth(form);
+
+        if (form == 6 || form == 7) {
+            // тройчатый и лопастной: три пластины из одного черешка
+            float k = form == 6 ? 0.62f : 0.55f;
+            float spreadAngle = form == 6 ? 32f : 54f;
+            for (int i = -1; i <= 1; i++) {
+                c.save();
+                c.rotate(i * spreadAngle);
+                blade(path, len * k, w * (form == 6 ? 0.62f : 0.70f), 0);
+                paintBlade(c, p, path, len * k, colLight, colDark, right);
+                c.restore();
+            }
+            c.restore();
+            return;
+        }
+
+        if (form == 10) {
+            // перистый: листочки вдоль общей оси, как у рябины или папоротника
+            float rachis = len * 0.94f;
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(Math.max(0.8f, len * 0.028f));
+            p.setColor(right ? colDark : colLight);
+            p.setStrokeCap(Paint.Cap.ROUND);
+            c.drawLine(0, 0, rachis, 0, p);
+            int pairs = 4;
+            for (int i = 0; i < pairs; i++) {
+                float t = 0.20f + i * 0.20f;
+                float lf = len * (0.44f - i * 0.06f);
+                for (int s = -1; s <= 1; s += 2) {
+                    c.save();
+                    c.translate(rachis * t, 0);
+                    c.rotate(s * 48f);
+                    blade(path, lf, lf * 0.34f, 0);
+                    paintBlade(c, p, path, lf, colLight, colDark, right);
+                    c.restore();
+                }
+            }
+            c.save();
+            c.translate(rachis, 0);
+            blade(path, len * 0.36f, len * 0.13f, 0);
+            paintBlade(c, p, path, len * 0.36f, colLight, colDark, right);
+            c.restore();
+            c.restore();
+            return;
+        }
+
+        if (form == 11) {
+            // рассечённый: пучок тонких долек — укроп, фенхель
+            int seg = 7;
+            for (int i = 0; i < seg; i++) {
+                float a = -54f + i * (108f / (seg - 1));
+                float lf = len * (0.72f + 0.28f * (1f - Math.abs(a) / 54f));
+                c.save();
+                c.rotate(a);
+                blade(path, lf, lf * 0.09f, 5);
+                paintBlade(c, p, path, lf, colLight, colDark, right);
+                c.restore();
+            }
+            c.restore();
+            return;
+        }
+
+        if (form == 12) {
+            // кленовый: пять острых лопастей из одной точки
+            for (int i = -2; i <= 2; i++) {
+                float lf = len * (i == 0 ? 1f : 0.74f);
+                c.save();
+                c.rotate(i * 36f);
+                blade(path, lf, lf * 0.30f, 1);
+                paintBlade(c, p, path, lf, colLight, colDark, right);
+                c.restore();
+            }
+            c.restore();
+            return;
+        }
+
+        blade(path, len, w, form);
+        paintBlade(c, p, path, len, colLight, colDark, right);
+
+        // крап: несколько точек вдоль пластины
+        if (spots && len > 8f) {
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0x3A000000);
+            for (int i = 1; i <= 4; i++) {
+                float t = 0.22f + i * 0.14f;
+                float jitter = ((i % 2) * 2 - 1) * w * 0.32f;
+                c.drawCircle(len * t, jitter, Math.max(0.6f, w * 0.14f), p);
+            }
+        }
+        c.restore();
+    }
+
+    /** Заливка листовой пластины градиентом и одна светлая прожилка. */
+    private static void paintBlade(Canvas c, Paint p, Path path, float len,
+                                   int colLight, int colDark, boolean right) {
         p.setStyle(Paint.Style.FILL);
-        p.setShader(new LinearGradient(0, 0, len, 0,
+        p.setShader(new LinearGradient(0, 0, Math.max(1f, len), 0,
                 right ? colDark : colLight, right ? colLight : colDark, Shader.TileMode.CLAMP));
         c.drawPath(path, p);
         p.setShader(null);
 
-        // прожилка светлая: тёмная на тёмном фоне не видна
         p.setStyle(Paint.Style.STROKE);
-        p.setStrokeWidth(Math.max(1f, len * 0.035f));
-        p.setColor(0x44FFFFFF);
+        p.setStrokeWidth(Math.max(0.7f, len * 0.030f));
+        p.setColor(0x3AFFFFFF);
         p.setStrokeCap(Paint.Cap.ROUND);
-        c.drawLine(len * 0.08f, 0, len * 0.84f, 0, p);
-        c.restore();
+        c.drawLine(0, 0, len * 0.82f, 0, p);
     }
 
     // ---- бутон ----
@@ -362,7 +546,8 @@ public final class KawaiiPlant {
         Pal pal = palette(species);
         Tr tr = traits(species, lightX);
         int fam = Species.family(species);
-        float R = size * headFor(fam, tr) * (0.55f + 0.45f * open);
+        // потолок размера: иначе крупное соцветие закрывает стебель и листья
+        float R = Math.min(size * headFor(fam, tr) * (0.55f + 0.45f * open), size * 0.26f);
         if (R <= 0.5f) return;
         float tilt = wind * 5f + (float) Math.sin(time * 1.4f + species) * 1.4f
                 + Species.headTurn(species);

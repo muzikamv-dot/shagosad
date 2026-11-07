@@ -785,15 +785,22 @@ public class GameState {
         questsClaimed();   // задания по цветку и неделе закрываются сразу
     }
 
-    /** Следующий вид: сначала те, которых ещё нет в букете. */
+    /** Следующий вид: сначала добираем классические 365, потом идут бесконечные. */
     public int nextSpecies() {
         java.util.Random rnd = new java.util.Random();
-        if (bloomed.size() >= SPECIES_COUNT) return rnd.nextInt(SPECIES_COUNT);
+        if (bloomed.size() < SPECIES_COUNT) {
+            for (int guard = 0; guard < 400; guard++) {
+                int id = rnd.nextInt(SPECIES_COUNT);
+                if (!bloomed.contains(id)) return id;
+            }
+        }
+        // коллекция не заканчивается: берём виды из большого пространства имён
+        int space = Species.NAME_SPACE;
         for (int guard = 0; guard < 400; guard++) {
-            int id = rnd.nextInt(SPECIES_COUNT);
+            int id = SPECIES_COUNT + rnd.nextInt(Math.max(1, space - SPECIES_COUNT));
             if (!bloomed.contains(id)) return id;
         }
-        return 0;
+        return SPECIES_COUNT + rnd.nextInt(Math.max(1, space - SPECIES_COUNT));
     }
 
     /**

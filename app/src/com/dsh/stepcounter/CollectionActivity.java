@@ -20,11 +20,12 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 
 /**
- * Коллекция: сетка всех 365 видов. Собранные — цветными, остальные — силуэтами.
+ * Коллекция по сезонам: у каждого сезона своя полка собранных цветов.
+ * Сбор не заканчивается, поэтому «из 365» здесь больше нет.
  * Отсюда же открывается открытка собранного цветка и список сохранённых открыток.
  */
 public class CollectionActivity extends Activity {
@@ -32,7 +33,6 @@ public class CollectionActivity extends Activity {
     private GameState game;
     private CollectionView grid;
     private TextView countView;
-    private final TextView[] chips = new TextView[3];
     private final Handler ui = new Handler(Looper.getMainLooper());
 
     @Override
@@ -109,34 +109,7 @@ public class CollectionActivity extends Activity {
         countView.setPadding(pad, 0, pad, dp(10));
         root.addView(countView);
 
-        // фильтры
-        // фильтры: три овала одного размера на всю ширину, текст по центру
-        LinearLayout filters = new LinearLayout(this);
-        filters.setOrientation(LinearLayout.HORIZONTAL);
-        filters.setPadding(pad, 0, pad, dp(12));
-        String[] names = {"Все", "Собраны", "Осталось"};
-        for (int i = 0; i < names.length; i++) {
-            final int mode = i;
-            TextView chip = new TextView(this);
-            chip.setText(names[i]);
-            chip.setTextSize(12);
-            chip.setTypeface(Ui.medium());
-            chip.setGravity(Gravity.CENTER);
-            chip.setIncludeFontPadding(false);
-            chip.setPadding(dp(4), 0, dp(4), 0);
-            chip.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) { selectFilter(mode); }
-            });
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    0, dp(38), 1f);
-            // зазор 10dp подобран так, чтобы три овала делились на ширину экрана
-            // без остатка (при 8dp третья колонка была на пиксель шире)
-            if (i > 0) lp.leftMargin = dp(10);
-            filters.addView(chip, lp);
-            chips[i] = chip;
-        }
-        root.addView(filters);
-
+        // фильтров больше нет: коллекция разложена по сезонам
         root.addView(Ui.divider(this));
 
         // Уникальные цветы из ивентов: пока пустые места, они заполнятся,
@@ -233,25 +206,23 @@ public class CollectionActivity extends Activity {
         root.addView(grid, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        selectFilter(CollectionView.FILTER_ALL);
+        refresh();
         return root;
     }
 
-    private void selectFilter(int mode) {
-        for (int i = 0; i < chips.length; i++) {
-            if (chips[i] == null) continue;
-            boolean on = i == mode;
-            GradientDrawable bg = new GradientDrawable();
-            bg.setCornerRadius(dp(19));   // половина высоты 38dp — настоящий овал
-            bg.setColor(on ? Theme.ACCENT : Theme.SURFACE_HI);
-            chips[i].setBackground(bg);
-            chips[i].setTextColor(on ? Theme.ON_ACCENT : Theme.MUTED);
+    /** Пересобрать полки сезонов и подпись «собрано». */
+    private void refresh() {
+        grid.setCards(game.cards);
+        int total = 0, now = 0;
+        String nowKey = Season.now();
+        for (GameState.Card c : game.cards) {
+            if (c == null || c.species < 0) continue;
+            total++;
+            if (Season.key(c.date).equals(nowKey)) now++;
         }
-        HashSet<Integer> owned = new HashSet<>();
-        for (Integer sp : game.bloomed) owned.add(sp);
-        grid.setData(owned, mode);
-        int n = owned.size();
-        countView.setText("собрано " + n + " из " + Species.COUNT);
+        String season = Season.label(nowKey).toLowerCase(Locale.US);
+        countView.setText("собрано " + total + " · в этом сезоне " + now
+                + " · сейчас " + season);
     }
 
     /** Праздничная открытка: рисуем ту же, что в коллекции, но по своему шаблону. */
