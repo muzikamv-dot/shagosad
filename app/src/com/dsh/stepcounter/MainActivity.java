@@ -1360,19 +1360,34 @@ public class MainActivity extends Activity {
         // до первого полива — первый кадр (семечко), каждый полив сдвигает картинку на один
         int art = Math.max(1, Math.min(Event.STAGES, stage + 1));
 
-        ImageView plant = new ImageView(this);
-        try {
-            int rid = getResources().getIdentifier(
-                    String.format(Locale.US, "event_stage_%02d", art), "drawable", getPackageName());
-            if (rid != 0) plant.setImageResource(rid);
-        } catch (Exception ignored) { }
-        plant.setAdjustViewBounds(false);
-        // FIT_END: растение стоит на нижней линии поля, а растёт вверх
-        // FIT_CENTER: кадр центрирован по цветку, поэтому растение стоит ровно по центру
-        plant.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(250));
-        card.addView(plant, plp);
+        if (!game.eventSeed) {
+            // Семечка ещё нет — в окне только небольшая горка земли, без растения.
+            // Высота та же, что у окна растения, чтобы карточка не «прыгала».
+            FrameLayout holder = new FrameLayout(this);
+            ImageView mound = new ImageView(this);
+            int mid = getResources().getIdentifier("event_mound", "drawable", getPackageName());
+            if (mid != 0) mound.setImageResource(mid);
+            mound.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            holder.addView(mound, new FrameLayout.LayoutParams(dp(104), dp(52),
+                    Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL));
+            card.addView(holder, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(320)));
+        } else {
+            ImageView plant = new ImageView(this);
+            try {
+                int rid = getResources().getIdentifier(
+                        String.format(Locale.US, "event_stage_%02d", art),
+                        "drawable", getPackageName());
+                if (rid != 0) plant.setImageResource(rid);
+            } catch (Exception ignored) { }
+            plant.setAdjustViewBounds(false);
+            // FIT_CENTER без отступов: кадр занимает всё окно, растение прижато к низу
+            // (кадры обрезаны по нижней линии), поэтому семечко стоит на земле,
+            // а выросший цветок упирается в верхнюю кромку окна
+            plant.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            card.addView(plant, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(320)));
+        }
 
         // точки стадий: 20 штук
         LinearLayout dots = new LinearLayout(this);

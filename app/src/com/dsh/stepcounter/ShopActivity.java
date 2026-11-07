@@ -330,16 +330,152 @@ public class ShopActivity extends Activity {
     }
 
     private void fillSeeds() {
+        int before = list.getChildCount();
+
+        // волшебная ромашка: необычный цветок за очки. Купить можно всегда —
+        // если цветок в саду недорощён, семечко подождёт своей очереди
+        list.addView(magicSeedCard());
+
         // праздничное семечко: только во время ивента и только один раз
         if (Event.active(this) && !game.eventSeed && !game.eventCard) {
             list.addView(eventSeedCard());
         }
 
-        list.addView(noteCard("Семена в разработке",
-                "Здесь можно будет купить семя конкретного вида, чтобы вырастить цветок, "
-                        + "которого ещё нет в коллекции, вместо случайного."));
-        list.addView(soonCard("Семя редкого вида", "выбрать, какой цветок растить"));
-        list.addView(soonCard("Набор на неделю", "несколько семян со скидкой"));
+        // ничего на продажу — одна короткая строка вместо заглушек
+        if (list.getChildCount() == before) {
+            TextView none = new TextView(this);
+            none.setText("Семян нет");
+            none.setTextColor(Theme.MUTED);
+            none.setTextSize(13);
+            none.setGravity(Gravity.CENTER);
+            none.setPadding(0, dp(28), 0, dp(28));
+            list.addView(none, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+    }
+
+    /** Волшебная ромашка: покупается за очки, растёт в саду, даёт необычную открытку. */
+    private View magicSeedCard() {
+        boolean growing = game.growingMagic();
+        boolean waiting = !growing && game.magicReady;
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(16), dp(14), dp(16), dp(14));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(22));
+        bg.setColor(Theme.SURFACE_HI);
+        bg.setStroke(dp(1), Theme.GOLD);
+        box.setBackground(bg);
+
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(android.view.Gravity.CENTER_VERTICAL);
+
+        ImageView icon = new ImageView(this);
+        int rid = getResources().getIdentifier("magic_seed_icon", "drawable", getPackageName());
+        if (rid == 0) rid = getResources().getIdentifier("magic_stage_01", "drawable", getPackageName());
+        if (rid != 0) icon.setImageResource(rid);
+        icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        GradientDrawable ico = new GradientDrawable();
+        ico.setColor(Theme.SURFACE);
+        ico.setCornerRadius(dp(16));
+        ico.setStroke(dp(1), Theme.CARD_STROKE);
+        icon.setBackground(ico);
+        icon.setPadding(dp(6), dp(6), dp(6), dp(6));
+        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(dp(76), dp(76));
+        ilp.rightMargin = dp(12);
+        head.addView(icon, ilp);
+
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+
+        TextView t = new TextView(this);
+        t.setText(Magic.NAME);
+        t.setTextColor(Theme.GOLD);
+        t.setTextSize(13.5f);
+        t.setTypeface(Ui.medium());
+        texts.addView(t);
+
+        TextView price = new TextView(this);
+        price.setText(Shop.money(Magic.PRICE) + " очков");
+        price.setTextColor(Theme.TEXT);
+        price.setTextSize(12);
+        price.setPadding(0, dp(2), 0, 0);
+        texts.addView(price);
+
+        head.addView(texts, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        box.addView(head);
+
+        TextView note = new TextView(this);
+        note.setText(growing
+                ? "Семечко уже посажено: растите его в саду обычными лейками, "
+                        + "10 поливов — и открытка ваша."
+                : waiting
+                        ? "Семечко куплено и ждёт: как только соберёте цветок в саду, "
+                                + "ромашка прорастёт на его месте."
+                        : "Необычный цветок: 10 поливов в саду, затем открытка в коллекцию. "
+                                + "Если в саду ещё растёт цветок — ромашка начнёт расти после него, "
+                                + "нынешний не пропадёт.");
+        note.setTextColor(Theme.MUTED);
+        note.setTextSize(11.5f);
+        note.setPadding(0, dp(10), 0, dp(12));
+        box.addView(note);
+
+        Button buy = new Button(this);
+        buy.setAllCaps(false);
+        buy.setTextSize(14f);
+        GradientDrawable bbg = new GradientDrawable();
+        bbg.setCornerRadius(dp(24));
+        if (growing) {
+            bbg.setColor(Theme.SURFACE);
+            buy.setText("Растёт в саду");
+            buy.setTextColor(Theme.MUTED);
+            buy.setEnabled(false);
+        } else if (waiting) {
+            bbg.setColor(Theme.SURFACE);
+            buy.setText("Куплено · ждёт своей грядки");
+            buy.setTextColor(Theme.GOLD);
+            buy.setEnabled(false);
+        } else if (game.points >= Magic.PRICE) {
+            bbg.setColor(Theme.GOLD);
+            buy.setText("Купить");
+            buy.setTextColor(0xFF2A1E00);
+            buy.setEnabled(true);
+            buy.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { buyMagic(); }
+            });
+        } else {
+            bbg.setColor(Theme.SURFACE);
+            buy.setText("Нужно " + Shop.money(Magic.PRICE) + " очков");
+            buy.setTextColor(Theme.MUTED);
+            buy.setEnabled(false);
+        }
+        buy.setBackground(bbg);
+        box.addView(buy, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+
+        return box;
+    }
+
+    /** Купить волшебное семечко: на свободную грядку сажается сразу,
+     *  а если цветок ещё растёт — ждёт его сбора, ничего не портя. */
+    private void buyMagic() {
+        if (game.growingMagic() || game.magicReady) return;
+        if (game.points < Magic.PRICE) {
+            Toast.makeText(this, "Не хватает очков", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean free = game.plotEmpty();
+        game.points -= Magic.PRICE;
+        game.queueMagic();
+        game.save(this);
+        Toast.makeText(this, free
+                        ? "Семечко посажено — растите его в саду"
+                        : "Семечко будет ждать: соберёте текущий цветок — и ромашка прорастёт",
+                Toast.LENGTH_LONG).show();
+        selectTab(2);
     }
 
     /** Бесплатное праздничное семечко на время ивента. */
@@ -359,7 +495,10 @@ public class ShopActivity extends Activity {
         head.setGravity(android.view.Gravity.CENTER_VERTICAL);
 
         ImageView icon = new ImageView(this);
-        int rid = getResources().getIdentifier("event_stage_01", "drawable", getPackageName());
+        // отдельная иконка семечка: кадр обрезан по растению, поэтому семечко
+        // занимает всю иконку, а не нижнюю треть высокого кадра стадии
+        int rid = getResources().getIdentifier("event_seed_icon", "drawable", getPackageName());
+        if (rid == 0) rid = getResources().getIdentifier("event_stage_01", "drawable", getPackageName());
         if (rid != 0) icon.setImageResource(rid);
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
         GradientDrawable ico = new GradientDrawable();
@@ -367,7 +506,7 @@ public class ShopActivity extends Activity {
         ico.setCornerRadius(dp(16));
         ico.setStroke(dp(1), Theme.CARD_STROKE);
         icon.setBackground(ico);
-        icon.setPadding(dp(4), dp(4), dp(4), dp(4));
+        icon.setPadding(dp(6), dp(6), dp(6), dp(6));
         LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(dp(76), dp(76));
         ilp.rightMargin = dp(12);
         head.addView(icon, ilp);
@@ -467,7 +606,9 @@ public class ShopActivity extends Activity {
         return box;
     }
 
-    /** Строка будущего товара с пометкой «в разработке». */
+    /** Строка будущего товара с пометкой «в разработке». Больше не используется:
+     *  в «Семенах» показываем только то, что реально можно купить. Оставлено,
+     *  чтобы вернуть, когда появятся настоящие семена видов. */
     private View soonCard(String name, String desc) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);

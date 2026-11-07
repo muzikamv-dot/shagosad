@@ -61,13 +61,21 @@ public final class Shop {
     private static final android.util.SparseArray<android.graphics.Bitmap> BITMAPS =
             new android.util.SparseArray<>();
 
-    /** Новогодние рамки рисуются готовыми картинками. */
+    /**
+     * Готовая картинка рамки: перерисованные рамки лежат как `frame_1…7`,
+     * новогодние — как `ny_frame_1…3`. Если картинки нет, вернётся null
+     * и рамка нарисуется кодом.
+     */
     private static android.graphics.Bitmap frameBitmap(android.content.Context ctx, int id) {
         if (ctx == null) return null;
         android.graphics.Bitmap b = BITMAPS.get(id);
         if (b != null) return b;
-        int res = ctx.getResources().getIdentifier("ny_frame_" + (id - 7),
+        int res = ctx.getResources().getIdentifier("frame_" + id,
                 "drawable", ctx.getPackageName());
+        if (res == 0 && id >= 8) {
+            res = ctx.getResources().getIdentifier("ny_frame_" + (id - 7),
+                    "drawable", ctx.getPackageName());
+        }
         if (res == 0) return null;
         b = android.graphics.BitmapFactory.decodeResource(ctx.getResources(), res);
         if (b != null) BITMAPS.put(id, b);
@@ -81,16 +89,15 @@ public final class Shop {
     public static void drawFrame(Canvas c, float cx, float cy, float r, int id, float d,
                                  android.content.Context ctx) {
         if (id <= 0) return;
-        if (id >= 8) {
-            android.graphics.Bitmap b = frameBitmap(ctx, id);
-            if (b != null) {
-                // картинка занимает чуть больше кольца, как и код-рамки (до r*1.06)
-                float half = r * 1.06f;
-                RectF dst = new RectF(cx - half, cy - half, cx + half, cy + half);
-                Paint ip = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-                c.drawBitmap(b, null, dst, ip);
-                return;
-            }
+        // сначала готовая картинка (перерисованные рамки), иначе — отрисовка кодом
+        android.graphics.Bitmap fb = frameBitmap(ctx, id);
+        if (fb != null) {
+            // картинка занимает чуть больше кольца, как и код-рамки (до r*1.06)
+            float half = r * 1.06f;
+            RectF dst = new RectF(cx - half, cy - half, cx + half, cy + half);
+            Paint ip = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+            c.drawBitmap(fb, null, dst, ip);
+            return;
         }
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         p.setStyle(Paint.Style.STROKE);

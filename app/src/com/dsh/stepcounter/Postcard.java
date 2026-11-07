@@ -37,13 +37,14 @@ public final class Postcard {
 
     public static Bitmap render(Context ctx, GameState.Card card) {
         // праздничная открытка идёт по тому же шаблону, что коллекционные
-        boolean ev = card != null && card.species < 0;
+        boolean ev = card != null && card.species == -1;
+        boolean magic = card != null && card.species == Magic.SPECIES;
         Bitmap out = Bitmap.createBitmap(W * SCALE, H * SCALE, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(out);
         c.scale(SCALE, SCALE);
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
 
-        float hue = KawaiiPlant.hueFor(card.species);
+        float hue = magic ? 42f : KawaiiPlant.hueFor(card.species);
         int gold = Color.HSVToColor(new float[]{45f, 0.55f, 1f});
 
         int top = Color.HSVToColor(new float[]{hue, 0.42f, 0.26f});
@@ -108,14 +109,14 @@ public final class Postcard {
         t.setLetterSpacing(0.35f);
         t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         t.setTextAlign(Paint.Align.LEFT);
-        c.drawText(ev ? "ПРАЗДНИЧНАЯ КОЛЛЕКЦИЯ" : "ГЕРБАРИЙ", 96, 108, t);
+        c.drawText(ev ? "ПРАЗДНИЧНАЯ КОЛЛЕКЦИЯ" : magic ? "НЕОБЫЧНЫЙ ЦВЕТОК" : "ГЕРБАРИЙ", 96, 108, t);
 
         // номер — золотом, как на коллекционной карточке
         t.setTextAlign(Paint.Align.RIGHT);
         t.setTextSize(26);
         t.setLetterSpacing(0.18f);
         t.setColor(gold);
-        c.drawText(ev ? Event.WHEN.toUpperCase() : "№ " + card.seed, W - 96, 108, t);
+        c.drawText(ev ? Event.WHEN.toUpperCase() : magic ? "ИЗ МАГАЗИНА" : "№ " + card.seed, W - 96, 108, t);
 
         Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
         line.setStrokeWidth(1f);
@@ -151,6 +152,15 @@ public final class Postcard {
                     c.drawBitmap(flower, null, new RectF(lx, 900f - fh, lx + fw, 900f), p);
                 }
             } catch (Exception ignored) { }
+        } else if (magic) {
+            // волшебная ромашка: готовая картинка раскрытого цветка
+            Bitmap flower = Magic.art(ctx, Magic.STAGES);
+            if (flower != null) {
+                float fh = 520f;
+                float fw = fh * flower.getWidth() / flower.getHeight();
+                float lx = W / 2f - fw / 2f;
+                c.drawBitmap(flower, null, new RectF(lx, 900f - fh, lx + fw, 900f), p);
+            }
         } else {
             KawaiiPlant.draw(c, card.species, 10, W / 2f, 900, 700, 0f, 0.35f);
         }
@@ -214,7 +224,10 @@ public final class Postcard {
         t.setTextSize(20);
         t.setLetterSpacing(0.15f);
         t.setColor(Color.HSVToColor(new float[]{hue, 0.12f, 0.68f}));
-        c.drawText(ev ? "ШАГОСАД · ПРАЗДНИЧНЫЙ ИВЕНТ" : "ШАГОСАД · " + card.seed + " ИЗ 365", W / 2f, H - 88, t);
+        c.drawText(ev ? "ШАГОСАД · ПРАЗДНИЧНЫЙ ИВЕНТ"
+                        : magic ? "ШАГОСАД · ВОЛШЕБНЫЙ ЦВЕТОК"
+                        : "ШАГОСАД · " + card.seed + " ЦВЕТОК",
+                W / 2f, H - 88, t);
 
         return out;
     }

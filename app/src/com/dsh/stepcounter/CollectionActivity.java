@@ -195,6 +195,72 @@ public class CollectionActivity extends Activity {
         events.addView(evHint, ehp);
         root.addView(events);
 
+        // Необычные цветы: те, что выросли из семечек магазина (волшебная ромашка)
+        LinearLayout unusual = new LinearLayout(this);
+        unusual.setOrientation(LinearLayout.VERTICAL);
+        unusual.setPadding(pad, dp(10), pad, dp(2));
+
+        TextView unTitle = new TextView(this);
+        unTitle.setText("НЕОБЫЧНЫЕ");
+        unTitle.setTextColor(Theme.FAINT);
+        unTitle.setTextSize(10);
+        unTitle.setLetterSpacing(0.10f);
+        unusual.addView(unTitle);
+
+        LinearLayout unSlots = new LinearLayout(this);
+        unSlots.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams uslp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        uslp.topMargin = dp(8);
+
+        final GameState.Card magicCard = findCard(Magic.SPECIES);
+        for (int i = 0; i < 4; i++) {
+            if (i == 0 && magicCard != null) {
+                ImageView got = new ImageView(this);
+                int rid = getResources().getIdentifier("magic_stage_10", "drawable", getPackageName());
+                if (rid != 0) got.setImageResource(rid);
+                got.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                GradientDrawable gold = new GradientDrawable();
+                gold.setColor(Theme.SURFACE_HI);
+                gold.setCornerRadius(dp(16));
+                gold.setStroke(dp(1), Theme.GOLD);
+                got.setBackground(gold);
+                got.setPadding(dp(6), dp(6), dp(6), dp(6));
+                got.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) { openCard(Magic.SPECIES); }
+                });
+                LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(0, dp(104), 1f);
+                if (i > 0) gp.leftMargin = dp(10);
+                unSlots.addView(got, gp);
+                continue;
+            }
+            TextView slot = new TextView(this);
+            slot.setText("✿");
+            slot.setTextSize(20);
+            slot.setTextColor(Theme.STROKE);
+            slot.setGravity(Gravity.CENTER);
+            slot.setIncludeFontPadding(false);
+            GradientDrawable empty = new GradientDrawable();
+            empty.setColor(0x00000000);
+            empty.setCornerRadius(dp(16));
+            empty.setStroke(dp(1), Theme.CARD_STROKE);
+            slot.setBackground(empty);
+            LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(0, dp(104), 1f);
+            if (i > 0) ilp.leftMargin = dp(10);
+            unSlots.addView(slot, ilp);
+        }
+        unusual.addView(unSlots, uslp);
+
+        TextView unHint = new TextView(this);
+        unHint.setText("цветы из семечек магазина — их не встретить в саду случайно");
+        unHint.setTextColor(Theme.FAINT);
+        unHint.setTextSize(9.5f);
+        LinearLayout.LayoutParams uhp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        uhp.topMargin = dp(7);
+        unusual.addView(unHint, uhp);
+        root.addView(unusual);
+
         grid = new CollectionView(this);
         grid.setListener(new CollectionView.Listener() {
             @Override public void onSpeciesTap(int species, boolean collected) {
@@ -216,9 +282,9 @@ public class CollectionActivity extends Activity {
         int total = 0, now = 0;
         String nowKey = Season.now();
         for (GameState.Card c : game.cards) {
-            if (c == null || c.species < 0) continue;
+            if (c == null || c.species == -1) continue;   // праздничные считаются отдельно
             total++;
-            if (Season.key(c.date).equals(nowKey)) now++;
+            if (c.species >= 0 && Season.key(c.date).equals(nowKey)) now++;
         }
         String season = Season.label(nowKey).toLowerCase(Locale.US);
         countView.setText("собрано " + total + " · в этом сезоне " + now

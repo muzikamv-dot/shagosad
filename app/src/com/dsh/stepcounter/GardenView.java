@@ -30,6 +30,7 @@ public class GardenView extends View {
     /** Строка букета считается не каждый кадр, а при изменении числа открыток. */
     private String bouquetCache = "";
     private int bouquetCards = -1;
+    private boolean bouquetMagic = false;
 
     public static final String[] SPECIES_NAMES = {"Ромашка", "Пион", "Лаванда", "Мак", "Ирис", "Роза",
             "Тюльпан", "Подсолнух", "Лотос", "Звёздный", "Лунная лилия", "Кристальный"};
@@ -327,16 +328,20 @@ public class GardenView extends View {
 
     /** «в букете 13 цветов · в этом сезоне 13»: без потолка «из 365». */
     private String bouquetText() {
-        if (bouquetCards == game.cards.size() && bouquetCache.length() > 0) return bouquetCache;
+        if (bouquetCards == game.cards.size() && bouquetMagic == game.magicReady
+                && bouquetCache.length() > 0) return bouquetCache;
         int now = 0;
         String key = Season.now();
         for (GameState.Card c : game.cards) {
             if (c != null && c.species >= 0 && Season.key(c.date).equals(key)) now++;
         }
-        bouquetCache = "в букете " + game.bloomed.size() + " "
+        // купленное волшебное семечко ждёт, пока дорастёт текущий цветок
+        String wait = game.magicReady && !game.growingMagic() ? "волшебное семечко ждёт · " : "";
+        bouquetCache = wait + "в букете " + game.bloomed.size() + " "
                 + Ui.plural(game.bloomed.size(), "цветок", "цветка", "цветов")
                 + " · в этом сезоне " + now;
         bouquetCards = game.cards.size();
+        bouquetMagic = game.magicReady;
         return bouquetCache;
     }
 
@@ -441,6 +446,12 @@ public class GardenView extends View {
         }
         if (game.withered) {
             drawWithered(c, w / 2f, plantBottom, fsize, time, plantAlpha);
+        } else if (game.growingMagic()) {
+            // волшебная ромашка: готовые кадры стадий вместо параметрического цветка
+            float mh = fsize * 0.92f;
+            float mw = mh * Magic.aspect();
+            r.set(w / 2f - mw / 2f, plantBottom - mh, w / 2f + mw / 2f, plantBottom);
+            Magic.draw(c, getContext(), stage, r, plantAlpha);
         } else {
             // свет падает с той стороны, где сейчас солнце: лепестки с этой стороны
             // получают блик, противоположные уходят в тень
@@ -479,8 +490,10 @@ public class GardenView extends View {
         } else if (game.weeds > 0) {
             caption = "сорняков: " + game.weeds + " · нужна тяпка";
         } else {
-            caption = Species.FORM[Species.shape(species) % Species.FORM.length]
-                    + " · " + STAGE_NAMES[Math.min(10, stage)];
+            String name = game.growingMagic()
+                    ? Magic.NAME
+                    : Species.FORM[Species.shape(species) % Species.FORM.length];
+            caption = name + " · " + STAGE_NAMES[Math.min(10, stage)];
         }
         centered(c, caption, w / 2f, labelY, 11.5f,
                 game.plotBlocked() ? Theme.GOLD : Theme.MUTED, false);
@@ -557,7 +570,11 @@ public class GardenView extends View {
             case MotionEvent.ACTION_DOWN:
                 downX = e.getX();
                 downY = e.getY();
-                pressed = card.contains(downX, downY) || buttonRect.contains(downX, downY);
+                // кнопка и полоса под карточкой: нажимается и кнопка, и чуть вокруг,
+                // чтобы палец не промахивался между карточкой и подписью
+                boolean lower = downY >= card.top + card.height() - 8 * d
+                        && downY <= buttonRect.bottom + 24 * d;
+                pressed = card.contains(downX, downY) || buttonRect.contains(downX, downY) || lower;
                 return pressed;
             case MotionEvent.ACTION_MOVE:
                 if (pressed

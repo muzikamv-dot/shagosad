@@ -26,6 +26,49 @@ public class GameState {
     public static final int STAGES = 10;  // 0 семя, 1..10 рост, 10 цветок
     public static final int SPECIES_COUNT = Species.COUNT;
 
+    /**
+     * Купленное волшебное семечко ждёт свободной грядки. Растущий цветок оно
+     * не трогает: прорастёт, когда текущий будет собран.
+     */
+    public boolean magicReady = false;
+
+    /** Пустая грядка: можно посадить волшебное семечко из магазина. */
+    public boolean plotEmpty() {
+        return !withered && weeds == 0 && stage[0] == 0;
+    }
+
+    /**
+     * Купить волшебное семечко: на свободную грядку сажается сразу, а если
+     * цветок ещё растёт — ждёт его сбора (растущий не трогаем).
+     */
+    public void queueMagic() {
+        if (plotEmpty()) {
+            plantMagic();
+        } else {
+            magicReady = true;
+        }
+    }
+
+    /**
+     * Посадить волшебную ромашку на грядку. Возвращает true, если получилось:
+     * грядка должна быть свободной, иначе прогресс обычного цветка потерялся бы.
+     */
+    public boolean plantMagic() {
+        if (!plotEmpty()) return false;
+        species[0] = Magic.SPECIES;
+        stage[0] = 0;
+        withered = false;
+        weeds = 0;
+        neglect = 0;
+        magicReady = false;
+        return true;
+    }
+
+    /** Сейчас на грядке растёт волшебная ромашка. */
+    public boolean growingMagic() {
+        return species[0] == Magic.SPECIES;
+    }
+
     /** Версия правил игры. Растёт при перебалансировке — прогресс сбрасывается. */
     public static final int GAME_VERSION = 4;
 
@@ -162,6 +205,7 @@ public class GameState {
         g.eventSeed = o.optBoolean("evSeed", false);
         g.eventStage = o.optInt("evStage", 0);
         g.eventCard = o.optBoolean("evCard", false);
+        g.magicReady = o.optBoolean("magicReady", false);
         g.nyMask = o.optInt("nyMask", 0);
         g.nyPlaced = o.optString("nyPlaced", "");
         g.nyCard = o.optBoolean("nyCard", false);
@@ -298,6 +342,7 @@ public class GameState {
         eventSeed = false;
         eventStage = 0;
         eventCard = false;
+        magicReady = false;
         nyMask = 0;
         nyPlaced = "";
         nyCard = false;
@@ -442,6 +487,7 @@ public class GameState {
         o.put("evSeed", eventSeed);
         o.put("evStage", eventStage);
         o.put("evCard", eventCard);
+        o.put("magicReady", magicReady);
         o.put("nyMask", nyMask);
         o.put("nyPlaced", nyPlaced);
         o.put("nyCard", nyCard);
@@ -778,10 +824,17 @@ public class GameState {
             q3Claimed = 0;
         }
         weekFlowers++;
-        cards.add(new Card(flowersTotal, sp, Species.name(sp), Steps.today(), Species.wish(sp)));
+        // у волшебной ромашки нет вида из Species — имя и пожелание берём у Magic
+        boolean magic = sp == Magic.SPECIES;
+        cards.add(new Card(flowersTotal, sp,
+                magic ? Magic.NAME : Species.name(sp),
+                Steps.today(),
+                magic ? Magic.WISH : Species.wish(sp)));
 
         stage[0] = 0;
-        species[0] = nextSpecies();
+        // если куплено волшебное семечко — оно и занимает освободившуюся грядку
+        species[0] = magicReady ? Magic.SPECIES : nextSpecies();
+        magicReady = false;
         questsClaimed();   // задания по цветку и неделе закрываются сразу
     }
 

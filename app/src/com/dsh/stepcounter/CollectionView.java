@@ -43,6 +43,9 @@ public class CollectionView extends View {
         final ArrayList<Integer> species = new ArrayList<>();
     }
 
+    /** Есть ли вообще открытки: если да, пустая подсказка не нужна. */
+    private boolean anyCards = false;
+
     private final ArrayList<Shelf> shelves = new ArrayList<>();
 
     private float d;
@@ -67,6 +70,9 @@ public class CollectionView extends View {
     /** Разложить собранные цветы по сезонам: новые сезоны сверху. */
     public void setCards(List<GameState.Card> cards) {
         LinkedHashMap<String, Shelf> map = new LinkedHashMap<>();
+        // необычные цветы (из магазина) идут в отдельный блок, в сезоны не попадают,
+        // но если они есть — пустую подсказку показывать не надо
+        anyCards = cards != null && !cards.isEmpty();
         for (GameState.Card c : cards) {
             if (c == null || c.species < 0) continue;   // праздничные — в блоке «ИЗ ИВЕНТОВ»
             String k = Season.key(c.date);
@@ -157,10 +163,12 @@ public class CollectionView extends View {
 
         if (shelves.isEmpty()) {
             // коллекция ещё пустая: не оставляем экран белым пятном
-            titlePaint.setColor(Theme.FAINT);
-            String hint = "Пока пусто — вырастите первый цветок";
-            c.drawText(hint, (getWidth() - titlePaint.measureText(hint)) / 2f,
-                    getHeight() * 0.28f, titlePaint);
+            if (!anyCards) {
+                titlePaint.setColor(Theme.FAINT);
+                String hint = "Пока пусто — вырастите первый цветок";
+                c.drawText(hint, (getWidth() - titlePaint.measureText(hint)) / 2f,
+                        getHeight() * 0.28f, titlePaint);
+            }
             return;
         }
 
