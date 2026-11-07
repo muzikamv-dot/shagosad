@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.dsh.stepcounter"
-    android:versionCode="275"
-    android:versionName="11.91">
+    android:versionCode="278"
+    android:versionName="11.94-alpha">
 
     <!-- доступ к счётчику шагов -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />

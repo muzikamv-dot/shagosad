@@ -280,14 +280,35 @@ public class CollectionActivity extends Activity {
     }
 
     /** Превью полученных медалей: лента монет, по нажатию — экран награды. */
+    /** Медали в коллекции: три ленты по металлам — бронза, серебро, золото. */
     private View medalsBlock() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.addView(medalStrip("bronze", "БРОНЗА"));
+        box.addView(medalStrip("silver", "СЕРЕБРО"));
+        box.addView(medalStrip("gold", "ЗОЛОТО"));
+
+        TextView hint = new TextView(this);
+        hint.setText("нажми на медаль — вспомнишь, за что она");
+        hint.setTextColor(Theme.FAINT);
+        hint.setTextSize(9.5f);
+        hint.setPadding(dp(16), dp(12), dp(16), 0);
+        box.addView(hint);
+        return box;
+    }
+
+    /** Одна лента медалей одного металла. */
+    private View medalStrip(String metal, String label) {
         final int pad = dp(16);
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(pad, dp(10), pad, dp(2));
 
         final java.util.ArrayList<Achievements.Ach> got = new java.util.ArrayList<>();
+        int total = 0;
         for (Achievements.Ach a : Achievements.ALL) {
+            if (!metal.equals(a.metal)) continue;
+            total++;
             if (game.unlocked.contains(a.id)) got.add(a);
         }
 
@@ -296,7 +317,7 @@ public class CollectionActivity extends Activity {
         head.setGravity(Gravity.CENTER_VERTICAL);
 
         TextView title = new TextView(this);
-        title.setText("МЕДАЛИ");
+        title.setText(label);
         title.setTextColor(Theme.FAINT);
         title.setTextSize(10);
         title.setLetterSpacing(0.10f);
@@ -304,7 +325,7 @@ public class CollectionActivity extends Activity {
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         TextView count = new TextView(this);
-        count.setText(got.size() + " из " + Achievements.ALL.size());
+        count.setText(got.size() + " из " + total);
         count.setTextColor(Theme.MUTED);
         count.setTextSize(10.5f);
         head.addView(count);
@@ -312,7 +333,7 @@ public class CollectionActivity extends Activity {
 
         if (got.isEmpty()) {
             TextView empty = new TextView(this);
-            empty.setText("пока ни одной — первая придёт с первым цветком");
+            empty.setText("пока ни одной такой");
             empty.setTextColor(Theme.FAINT);
             empty.setTextSize(9.5f);
             empty.setPadding(0, dp(8), 0, 0);
@@ -357,13 +378,6 @@ public class CollectionActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         slp.topMargin = dp(8);
         box.addView(holder, slp);
-
-        TextView hint = new TextView(this);
-        hint.setText("нажми на медаль — вспомнишь, за что она");
-        hint.setTextColor(Theme.FAINT);
-        hint.setTextSize(9.5f);
-        hint.setPadding(0, dp(7), 0, 0);
-        box.addView(hint);
         return box;
     }
 

@@ -93,21 +93,19 @@ public class InventoryActivity extends Activity {
 
     private void fill() {
         list.removeAllViews();
-        boolean empty = game.hoes == 0 && game.shovels == 0;
 
-        if (empty) {
-            list.addView(card("Пока пусто",
-                    "Инструменты покупаются в магазине, на вкладке «Инструменты». "
-                            + "Тяпка нужна, чтобы срезать сорняки после пропущенного дня. "
-                            + "Лопата — чтобы перекопать землю, если цветок засох."));
+        // пока инструмент не куплен — его строки нет: инвентарь просто пустой,
+        // без заглушек и слова «нет»
+        if (game.hoes > 0) {
+            list.addView(tool("Тяпка", game.hoes,
+                    "срезает один сорняк. Сорняки появляются, если не выполнить норму шагов.",
+                    GameState.HOE_PRICE, ToolIcon.HOE));
         }
-
-        list.addView(tool("Тяпка", game.hoes,
-                "срезает один сорняк. Сорняки появляются, если не выполнить норму шагов.",
-                GameState.HOE_PRICE, ToolIcon.HOE));
-        list.addView(tool("Лопата", game.shovels,
-                "перекапывает землю, если цветок засох после трёх пропусков подряд.",
-                GameState.SHOVEL_PRICE, ToolIcon.SHOVEL));
+        if (game.shovels > 0) {
+            list.addView(tool("Лопата", game.shovels,
+                    "перекапывает землю, если цветок засох после трёх пропусков подряд.",
+                    GameState.SHOVEL_PRICE, ToolIcon.SHOVEL));
+        }
 
         if (game.neglect > 0) {
             list.addView(card("Пропусков подряд: " + game.neglect,

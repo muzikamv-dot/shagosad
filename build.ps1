@@ -184,7 +184,7 @@ if ($Install) {
     # 3) паспорт: строку версии берём из манифеста, чтобы документ не отставал
     $proj = Join-Path $root 'PROJECT.md'
     $md = [IO.File]::ReadAllText($proj, [Text.Encoding]::UTF8)
-    $md = [regex]::Replace($md, '- версия: versionCode \d+ / versionName [\w.]+',
+    $md = [regex]::Replace($md, '- версия: versionCode \d+ / versionName [\w.\-]+',
                            "- версия: versionCode $vCode / versionName $vName")
     [IO.File]::WriteAllText($proj, $md, (New-Object Text.UTF8Encoding($false)))
     & $adb push $proj "$dist/ПАСПОРТ-ПРОЕКТА.md"

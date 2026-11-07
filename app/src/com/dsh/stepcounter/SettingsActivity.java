@@ -590,7 +590,11 @@ public class SettingsActivity extends Activity {
         box.addView(contact);
 
         TextView version = new TextView(this);
-        version.setText("ШагоСад · версия " + versionName() + " (" + versionCode() + ")");
+        // пока идёт альфа-тест, версия помечается суффиксом -alpha (см. манифест)
+        String tag = versionName();
+        boolean alpha = tag != null && tag.toLowerCase(java.util.Locale.US).contains("alpha");
+        version.setText("ШагоСад · версия " + tag + " (" + versionCode() + ")"
+                + (alpha ? " · альфа-тест" : ""));
         version.setTextColor(Theme.FAINT);
         version.setTextSize(10);
         version.setPadding(0, dp(10), 0, dp(10));
