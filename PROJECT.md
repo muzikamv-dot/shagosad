@@ -1398,7 +1398,7 @@ HTTP через `curl.exe` — Java-клиент падает на провер�
 - Постоянная ссылка для людей:
   `https://github.com/muzikamv-dot/shagosad/releases/latest/download/ShagoSad.apk`
   (всегда отдаёт последний релиз; резерв — `dist/ShagoSad.apk` в репозитории).
-- SHA-256 сборки 11.91: `05e5ea5f7602d13e8cfc9992f55a0240cef124d28cb46ec11fdb9c8e87ad42a4`,
+- SHA-256 сборки 11.91: `efc103463650f8f03a932b15e20b47db3b8b08461c42f50c8629062560cf88aa`,
   размер 5 617 919 байт. Хеш один у релиза, `dist/ShagoSad.apk`, установленного APK
   и копии в `Download/Шагомер`; обе ссылки проверены после `ship.ps1`.
   Коммит релиза `81741d8`, тег `v11.91` указывает на него же, `main` на нём же.
