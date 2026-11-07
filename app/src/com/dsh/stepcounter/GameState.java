@@ -135,6 +135,10 @@ public class GameState {
     public int stepsCache = 0;
     public String stepsCacheDay = "";
     public final java.util.List<String> unlocked = new ArrayList<>();
+
+    /** Когда получено достижение: id -> дата (день, «2026-11-07»). */
+    public final java.util.LinkedHashMap<String, String> unlockedOn =
+            new java.util.LinkedHashMap<>();
     public final java.util.List<Integer> bloomed = new ArrayList<>();
     public final java.util.List<Card> cards = new ArrayList<>();
 
@@ -300,6 +304,20 @@ public class GameState {
             if (un != null) {
                 for (int i = 0; i < un.length(); i++) g.unlocked.add(un.optString(i));
             }
+
+            // даты получения медалей: «id|2026-11-07»
+            JSONArray unOn = o.optJSONArray("unlockedOn");
+            if (unOn != null) {
+                for (int i = 0; i < unOn.length(); i++) {
+                    String raw = unOn.optString(i, "");
+                    int bar = raw.indexOf('|');
+                    if (bar > 0) g.unlockedOn.put(raw.substring(0, bar), raw.substring(bar + 1));
+                }
+            }
+            // старые сохранения: даты нет — ставим сегодняшнюю один раз
+            for (String id : g.unlocked) {
+                if (!g.unlockedOn.containsKey(id)) g.unlockedOn.put(id, Steps.today());
+            }
         } catch (Exception ignored) {
             for (int i = 0; i < PLOTS; i++) { g.stage[i] = 0; g.species[i] = i % 5; }
         } finally {
@@ -338,6 +356,7 @@ public class GameState {
         weekStart = 0;
         bloomed.clear();
         unlocked.clear();
+        unlockedOn.clear();
         cards.clear();
         eventSeed = false;
         eventStage = 0;
@@ -525,6 +544,11 @@ public class GameState {
             o.put("stepsCache", stepsCache);
             o.put("stepsCacheDay", stepsCacheDay);
             o.put("unlocked", new JSONArray(unlocked));
+            JSONArray unOn = new JSONArray();
+            for (java.util.Map.Entry<String, String> e : unlockedOn.entrySet()) {
+                unOn.put(e.getKey() + "|" + e.getValue());
+            }
+            o.put("unlockedOn", unOn);
             o.put("bloomed", new JSONArray(bloomed));
             JSONArray cr = new JSONArray();
             for (Card c : cards) {

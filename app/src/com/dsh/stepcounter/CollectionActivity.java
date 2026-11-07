@@ -261,6 +261,9 @@ public class CollectionActivity extends Activity {
         unusual.addView(unHint, uhp);
         root.addView(unusual);
 
+        // Медали: превью полученных, чтобы коллекция показывала не только цветы
+        root.addView(medalsBlock());
+
         grid = new CollectionView(this);
         grid.setListener(new CollectionView.Listener() {
             @Override public void onSpeciesTap(int species, boolean collected) {
@@ -274,6 +277,101 @@ public class CollectionActivity extends Activity {
 
         refresh();
         return root;
+    }
+
+    /** Превью полученных медалей: лента монет, по нажатию — экран награды. */
+    private View medalsBlock() {
+        final int pad = dp(16);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(pad, dp(10), pad, dp(2));
+
+        final java.util.ArrayList<Achievements.Ach> got = new java.util.ArrayList<>();
+        for (Achievements.Ach a : Achievements.ALL) {
+            if (game.unlocked.contains(a.id)) got.add(a);
+        }
+
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView title = new TextView(this);
+        title.setText("МЕДАЛИ");
+        title.setTextColor(Theme.FAINT);
+        title.setTextSize(10);
+        title.setLetterSpacing(0.10f);
+        head.addView(title, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView count = new TextView(this);
+        count.setText(got.size() + " из " + Achievements.ALL.size());
+        count.setTextColor(Theme.MUTED);
+        count.setTextSize(10.5f);
+        head.addView(count);
+        box.addView(head);
+
+        if (got.isEmpty()) {
+            TextView empty = new TextView(this);
+            empty.setText("пока ни одной — первая придёт с первым цветком");
+            empty.setTextColor(Theme.FAINT);
+            empty.setTextSize(9.5f);
+            empty.setPadding(0, dp(8), 0, 0);
+            box.addView(empty);
+            return box;
+        }
+
+        android.widget.HorizontalScrollView scroll = new android.widget.HorizontalScrollView(this);
+        scroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        for (int i = 0; i < got.size(); i++) {
+            final Achievements.Ach a = got.get(i);
+            ImageView coin = new ImageView(this);
+            int rid = getResources().getIdentifier(a.medal(), "drawable", getPackageName());
+            if (rid == 0) {
+                rid = getResources().getIdentifier("medal_" + a.id, "drawable", getPackageName());
+            }
+            if (rid != 0) coin.setImageResource(rid);
+            coin.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            coin.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { showAchievement(a); }
+            });
+            LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(dp(54), dp(54));
+            if (i > 0) ilp.leftMargin = dp(8);
+            row.addView(coin, ilp);
+        }
+        android.widget.HorizontalScrollView holder = scroll;
+        // ленту медалей тянут вбок, а страница листается вниз: при движении пальцем
+        // вбок запрещаем вертикальному ScrollView перехватывать жест
+        holder.setOnTouchListener(new View.OnTouchListener() {
+            @Override public boolean onTouch(View v, android.view.MotionEvent e) {
+                if (e.getActionMasked() == android.view.MotionEvent.ACTION_MOVE) {
+                    android.view.ViewParent par = v.getParent();
+                    if (par != null) par.requestDisallowInterceptTouchEvent(true);
+                }
+                return false;
+            }
+        });
+        holder.addView(row, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        slp.topMargin = dp(8);
+        box.addView(holder, slp);
+
+        TextView hint = new TextView(this);
+        hint.setText("нажми на медаль — вспомнишь, за что она");
+        hint.setTextColor(Theme.FAINT);
+        hint.setTextSize(9.5f);
+        hint.setPadding(0, dp(7), 0, 0);
+        box.addView(hint);
+        return box;
+    }
+
+    /** Показать экран награды для уже полученной медали. */
+    private void showAchievement(Achievements.Ach a) {
+        java.util.ArrayList<Achievements.Ach> one = new java.util.ArrayList<>();
+        one.add(a);
+        AchievementActivity.showQueue(this, one);
     }
 
     /** Пересобрать полки сезонов и подпись «собрано». */

@@ -129,6 +129,21 @@ public class AchievementActivity extends Activity {
         dlp.topMargin = dp(6);
         column.addView(desc, dlp);
 
+        // когда медаль получена — дата под описанием (для старых сохранений её может не быть)
+        String gotOn = GameState.load(this).unlockedOn.get(ach.id);
+        if (gotOn != null && gotOn.length() > 0) {
+            TextView when = new TextView(this);
+            when.setText("получено " + humanDay(gotOn));
+            when.setTextColor(Theme.FAINT);
+            when.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f);
+            when.setLetterSpacing(0.04f);
+            when.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            wlp.topMargin = dp(8);
+            column.addView(when, wlp);
+        }
+
         Button close = new Button(this);
         close.setText("Закрыть");
         close.setAllCaps(false);
@@ -153,6 +168,18 @@ public class AchievementActivity extends Activity {
         root.addView(column, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(root);
+    }
+
+    /** «2026-11-07» → «7 ноября 2026». */
+    private static String humanDay(String iso) {
+        try {
+            String[] p = iso.split("-");
+            String[] months = {"января", "февраля", "марта", "апреля", "мая", "июня", "июля",
+                    "августа", "сентября", "октября", "ноября", "декабря"};
+            return Integer.parseInt(p[2]) + " " + months[Integer.parseInt(p[1]) - 1] + " " + p[0];
+        } catch (Exception e) {
+            return iso;
+        }
     }
 
     /** Следующее достижение в очереди — новым окном, иначе закрываемся. */
@@ -192,13 +219,15 @@ public class AchievementActivity extends Activity {
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private final Paint rim = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF dst = new RectF();
+        private final RectF bg = new RectF();
 
-        private final Bitmap source;
-        private Bitmap scaled;
+        /** лицо медали (мотив по теме и уровню), оборот, свечение и лучи */
+        private final Bitmap front, back, halo, rays;
+        private Bitmap frontScaled, backScaled;
+        private final String metal;
         private final int color;
         private final long born = SystemClock.uptimeMillis();
 
-        private Path clip;
         private Shader glowShader;
         private float glowR;
         private float glowCx, glowCy;
@@ -206,30 +235,22 @@ public class AchievementActivity extends Activity {
         MedalView(Context ctx, String id, int color) {
             super(ctx);
             this.color = color;
-            Bitmap full = null;
-            try {
-                int rid = ctx.getResources().getIdentifier("medal_" + id, "drawable",
-                        ctx.getPackageName());
-                if (rid != 0) full = BitmapFactory.decodeResource(ctx.getResources(), rid);
-            } catch (Exception ignored) { }
+            Achievements.Ach a = Achievements.byId(id);
+            this.metal = a != null ? a.metal : "gold";
+            // новые картинки уже нарезаны диском по центру — обрезать не нужно
+            this.front = load(ctx, a != null ? a.medal() : "medal_" + id);
+            this.back = load(ctx, "medal_back_" + metal);
+            this.halo = load(ctx, "fx_halo");
+            this.rays = load(ctx, "fx_rays");
+        }
 
-            // Ленты под медалью не вращаем: иначе они сжимаются вместе с диском,
-            // и кажется, что медаль меняет размер. Берём верхнюю часть картинки.
-            // Ленты под медалью не нужны, и из-за них передняя сторона казалась
-            // больше обратной. Берём только диск: в картинке 256x256 он занимает
-            // квадрат 176x176 начиная с (40, 34) — замерено по самим PNG.
-            Bitmap coin = null;
-            if (full != null) {
-                try {
-                    int x = Math.round(full.getWidth() * 0.168f);
-                    int y = Math.round(full.getHeight() * 0.133f);
-                    int d = Math.round(full.getWidth() * 0.664f);
-                    coin = Bitmap.createBitmap(full, x, y, d, d);
-                } catch (Exception e) {
-                    coin = full;
-                }
-            }
-            source = coin;
+        private static Bitmap load(Context ctx, String name) {
+            if (name == null) return null;
+            try {
+                int rid = ctx.getResources().getIdentifier(name, "drawable", ctx.getPackageName());
+                if (rid != 0) return BitmapFactory.decodeResource(ctx.getResources(), rid);
+            } catch (Exception ignored) { }
+            return null;
         }
 
         @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
@@ -237,19 +258,13 @@ public class AchievementActivity extends Activity {
             float r = Math.min(w * 0.38f, h * 0.38f);
             glowCx = w / 2f;
             glowCy = h / 2f;
-            glowR = r * 1.8f;
-            clip = new Path();
-            clip.addCircle(glowCx, glowCy, r, Path.Direction.CW);
+            glowR = r * 1.5f;
             glowShader = new RadialGradient(glowCx, glowCy, glowR,
                     (color & 0x00FFFFFF) | 0x66000000, 0x00000000, Shader.TileMode.CLAMP);
-            // масштабируем один раз и с сохранением пропорций: квадратом картинку
-            // растягивало, и монета выглядела вытянутой
-            if (source != null) {
-                int sw = Math.max(1, Math.round(r * 2f));
-                int sh = Math.max(1, Math.round(sw * source.getHeight()
-                        / (float) source.getWidth()));
-                scaled = Bitmap.createScaledBitmap(source, sw, sh, true);
-            }
+            // медаль нарезана квадратом с диском по центру — масштабируем целиком
+            int side = Math.max(1, Math.round(r * 2f));
+            if (front != null) frontScaled = Bitmap.createScaledBitmap(front, side, side, true);
+            if (back != null) backScaled = Bitmap.createScaledBitmap(back, side, side, true);
         }
 
         @Override protected void onDraw(Canvas c) {
@@ -265,10 +280,28 @@ public class AchievementActivity extends Activity {
             float cos = (float) Math.cos(rad);
             float sin = (float) Math.sin(rad);
 
-            if (glowShader != null) {
+            // мягкое свечение: нарисованное облако, а если картинки нет — градиент
+            if (halo != null) {
+                bg.set(cx - glowR, cy - glowR, cx + glowR, cy + glowR);
+                p.setAlpha(150);
+                c.drawBitmap(halo, null, bg, p);
+                p.setAlpha(255);
+            } else if (glowShader != null) {
                 p.setShader(glowShader);
                 c.drawCircle(glowCx, glowCy, glowR, p);
                 p.setShader(null);
+            }
+
+            // лучи за медалью: поворачиваются медленнее самой медали
+            if (rays != null) {
+                int saveRays = c.save();
+                c.rotate(deg * 0.22f, cx, cy);
+                float rr = r * 2.1f;
+                bg.set(cx - rr, cy - rr, cx + rr, cy + rr);
+                p.setAlpha(140);
+                c.drawBitmap(rays, null, bg, p);
+                p.setAlpha(255);
+                c.restoreToCount(saveRays);
             }
 
             // ребро позади диска: толщина растёт к боковому положению
@@ -276,8 +309,10 @@ public class AchievementActivity extends Activity {
             float flat = Math.abs(sin);
             if (flat > 0.18f) {
                 float thick = r * 0.055f * flat;
+                int edge = "gold".equals(metal) ? 0xFFD8B25A
+                        : "silver".equals(metal) ? 0xFFDDE3EA : 0xFFC98A5E;
                 rim.setShader(new LinearGradient(cx - thick, cy, cx + thick, cy,
-                        0xFF6A5120, 0xFFD8B25A, Shader.TileMode.CLAMP));
+                        0xFF6A5120, edge, Shader.TileMode.CLAMP));
                 // ребро рисуем овалом по размеру самой монеты — иначе сверху и снизу
                 // торчат «нашлёпки» за краем диска
                 c.drawOval(cx - thick, cy - r * 0.98f, cx + thick, cy + r * 0.98f, rim);
@@ -285,33 +320,22 @@ public class AchievementActivity extends Activity {
             }
 
             // Диск вращается сжатием по горизонтали: высота не меняется, поэтому
-            // размер не «прыгает», а читается именно поворот.
+            // размер не «прыгает», а читается именно поворот. После половины
+            // оборота показываем настоящий оборот медали с ростком.
             float sx = Math.max(0.05f, Math.abs(cos));
+            Bitmap face = cos >= 0f ? frontScaled : backScaled;
             dst.set(cx - r, cy - bh / 2f, cx + r, cy + bh / 2f);
 
             int save = c.save();
             c.scale(sx, 1f, cx, cy);
-            if (cos >= 0f && scaled != null) {
-                p.setAlpha(255);
-                // клип по кругу: даже если в картинке осталась лента, она не покажется
-                if (clip != null) c.clipPath(clip);
-                c.drawBitmap(scaled, null, dst, p);
+            if (face != null) {
+                c.drawBitmap(face, null, dst, p);
             } else {
-                // обратная сторона: золотой диск с кольцом и звездой
+                // запасной вид, если картинок медалей нет
                 p.setShader(new RadialGradient(cx - r * 0.3f, cy - r * 0.3f, r * 1.7f,
                         0xFFFFF3CE, 0xFFB98C34, Shader.TileMode.CLAMP));
                 c.drawCircle(cx, cy, r, p);
                 p.setShader(null);
-                p.setStyle(Paint.Style.STROKE);
-                p.setStrokeWidth(r * 0.06f);
-                p.setColor(0x88FFF6D8);
-                c.drawCircle(cx, cy, r * 0.78f, p);
-                p.setStyle(Paint.Style.FILL);
-                p.setColor(0xE6FFF6D8);
-                p.setTextAlign(Paint.Align.CENTER);
-                p.setTextSize(r * 0.76f);
-                p.setTypeface(Typeface.create("serif", Typeface.NORMAL));
-                c.drawText("★", cx, cy + r * 0.27f, p);
             }
             c.restoreToCount(save);
 
@@ -343,12 +367,23 @@ public class AchievementActivity extends Activity {
             boolean trail;
         }
 
+        /** Летящий лепесток: падает сверху, покачивается и вращается. */
+        private static final class Petal {
+            float x, y, vx, vy, rot, spin, life, max, size;
+            int idx;
+        }
+
         private final ArrayList<Spark> sparks = new ArrayList<>();
-        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final ArrayList<Petal> petals = new ArrayList<>();
+        private final Bitmap[] glints = new Bitmap[8];
+        private final Bitmap[] petalArt = new Bitmap[12];
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private final Paint glow = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF dst = new RectF();
         private final Random rnd = new Random();
         private final int accent;
         private long nextBurst = 0;
+        private long nextPetal = 0;
         private long lastFrame = 0;
 
         Fireworks(Context ctx, int accent) {
@@ -357,6 +392,12 @@ public class AchievementActivity extends Activity {
             p.setStrokeCap(Paint.Cap.ROUND);
             glow.setColor(0xFFFFFFFF);
             glow.setAlpha(36);
+            for (int i = 0; i < glints.length; i++) {
+                glints[i] = MedalView.load(ctx, String.format(java.util.Locale.US, "fx_spark_%02d", i + 1));
+            }
+            for (int i = 0; i < petalArt.length; i++) {
+                petalArt[i] = MedalView.load(ctx, String.format(java.util.Locale.US, "fx_petal_%02d", i + 1));
+            }
         }
 
         @Override protected void onDraw(Canvas c) {
@@ -391,7 +432,53 @@ public class AchievementActivity extends Activity {
                     c.drawLine(s.px, s.py, s.x, s.y, p);
                 }
                 p.setStyle(Paint.Style.FILL);
-                c.drawCircle(s.x, s.y, s.size * (0.5f + 0.5f * k), p);
+                // головку искры рисуем нарисованным бликом, кружок — только запасной вид
+                Bitmap g = glints[(int) (Math.abs((int) (s.x + s.y * 7)) % glints.length)];
+                if (g != null) {
+                    float rr = s.size * (2.1f + 2.1f * k);
+                    dst.set(s.x - rr, s.y - rr, s.x + rr, s.y + rr);
+                    c.drawBitmap(g, null, dst, p);
+                } else {
+                    c.drawCircle(s.x, s.y, s.size * (0.5f + 0.5f * k), p);
+                }
+            }
+            p.setAlpha(255);
+
+            // лепестки: падают сверху, покачиваются и вращаются
+            if (now >= nextPetal) {
+                nextPetal = now + 70 + rnd.nextInt(90);
+                if (petals.size() < 44) {
+                    Petal pe = new Petal();
+                    pe.x = rnd.nextFloat() * getWidth();
+                    pe.y = -20f - rnd.nextFloat() * 40f;
+                    pe.vx = -30f + rnd.nextFloat() * 60f;
+                    pe.vy = 70f + rnd.nextFloat() * 90f;
+                    pe.rot = rnd.nextFloat() * 360f;
+                    pe.spin = -120f + rnd.nextFloat() * 240f;
+                    pe.max = 6f + rnd.nextFloat() * 4f;
+                    pe.life = pe.max;
+                    pe.size = 20f + rnd.nextFloat() * 16f;
+                    pe.idx = rnd.nextInt(petalArt.length);
+                    petals.add(pe);
+                }
+            }
+            for (int i = petals.size() - 1; i >= 0; i--) {
+                Petal pe = petals.get(i);
+                pe.life -= dt;
+                if (pe.life <= 0f || pe.y > getHeight() + 60f) { petals.remove(i); continue; }
+                pe.vy += 20f * dt;
+                pe.x += (pe.vx + 26f * (float) Math.sin(now / 700.0 + pe.rot)) * dt;
+                pe.y += pe.vy * dt;
+                pe.rot += pe.spin * dt;
+                Bitmap b = petalArt[pe.idx % petalArt.length];
+                if (b == null) continue;
+                int savePetal = c.save();
+                c.rotate(pe.rot, pe.x, pe.y);
+                dst.set(pe.x - pe.size / 2f, pe.y - pe.size / 2f,
+                        pe.x + pe.size / 2f, pe.y + pe.size / 2f);
+                p.setAlpha((int) (255 * Math.min(1f, pe.life / 1.5f)));
+                c.drawBitmap(b, null, dst, p);
+                c.restoreToCount(savePetal);
             }
             p.setAlpha(255);
 

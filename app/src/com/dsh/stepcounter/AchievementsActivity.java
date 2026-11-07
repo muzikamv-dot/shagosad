@@ -103,6 +103,18 @@ public class AchievementsActivity extends Activity {
         return Steps.refreshToday(this);
     }
 
+    /** Обесцвечивание и лёгкое затемнение для ещё не открытых достижений. */
+    private static android.graphics.ColorFilter grayFilter() {
+        android.graphics.ColorMatrix m = new android.graphics.ColorMatrix();
+        m.setSaturation(0.25f);
+        m.postConcat(new android.graphics.ColorMatrix(new float[]{
+                0.82f, 0, 0, 0, 0,
+                0, 0.82f, 0, 0, 0,
+                0, 0, 0.82f, 0, 0,
+                0, 0, 0, 1, 0}));
+        return new android.graphics.ColorMatrixColorFilter(m);
+    }
+
     private View card(Achievements.Ach a) {
         boolean on = game.unlocked.contains(a.id);
         int cur = Math.min(Achievements.progress(a, game, daySteps()), a.target);
@@ -121,14 +133,19 @@ public class AchievementsActivity extends Activity {
 
         ImageView badge = new ImageView(this);
         try {
-            int rid = getResources().getIdentifier("medal_" + a.id, "drawable", getPackageName());
+            // сначала медаль по теме и уровню, потом старая картинка на каждое достижение
+            int rid = getResources().getIdentifier(a.medal(), "drawable", getPackageName());
+            if (rid == 0) {
+                rid = getResources().getIdentifier("medal_" + a.id, "drawable", getPackageName());
+            }
             if (rid != 0) badge.setImageResource(rid);
             if (on) {
                 badge.setColorFilter(null);
                 badge.setAlpha(1f);
             } else {
-                badge.setColorFilter(Theme.FAINT, android.graphics.PorterDuff.Mode.MULTIPLY);
-                badge.setAlpha(0.65f);
+                // не заработано: медаль обесцвечена и приглушена, но рисунок видно
+                badge.setColorFilter(grayFilter());
+                badge.setAlpha(0.5f);
             }
         } catch (Exception ignored) { }
         LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(dp(38), dp(38));

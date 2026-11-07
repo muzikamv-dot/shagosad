@@ -13,11 +13,53 @@ public final class Achievements {
         public final int target;
         public final Metric metric;
         public final int color;
+        /** тема медали: flowers, steps, streak, level, species, watering */
+        public final String theme;
+        /** крупная цель — мотив медали величественнее (корзина вместо цветка и т.п.) */
+        public final boolean big;
+        /** металл медали по цвету достижения: bronze, silver, gold */
+        public final String metal;
 
         Ach(String id, String title, String desc, int target, Metric metric, int color) {
             this.id = id; this.title = title; this.desc = desc;
             this.target = target; this.metric = metric; this.color = color;
+            this.theme = themeOf(metric);
+            this.big = target >= bigFrom(theme);
+            this.metal = metalOf(color);
         }
+
+        /** Имя ресурса медали: medal_<тема>_<мотив>_<металл>. */
+        public String medal() {
+            return "medal_" + theme + (big ? "_big_" : "_small_") + metal;
+        }
+    }
+
+    static String themeOf(Metric m) {
+        switch (m) {
+            case FLOWERS: return "flowers";
+            case STREAK: return "streak";
+            case LEVEL: return "level";
+            case SPECIES: return "species";
+            case WATERED: return "watering";
+            default: return "steps";        // шаги за день, рекорд дня, шаги всего
+        }
+    }
+
+    /** С какого значения цель считается большой — там медаль с крупным мотивом. */
+    static int bigFrom(String theme) {
+        if ("flowers".equals(theme)) return 40;
+        if ("steps".equals(theme)) return 200000;
+        if ("streak".equals(theme)) return 45;
+        if ("level".equals(theme)) return 30;
+        if ("species".equals(theme)) return 50;
+        return 200;                          // поливы
+    }
+
+    static String metalOf(int color) {
+        int rgb = color & 0x00FFFFFF;
+        if (rgb == 0x34D399) return "silver";
+        if (rgb == 0xF4D58D) return "gold";
+        return "bronze";
     }
 
     public static final List<Ach> ALL = new ArrayList<>();
@@ -158,6 +200,7 @@ public final class Achievements {
             if (g.unlocked.contains(a.id)) continue;
             if (progress(a, g, daySteps) >= a.target) {
                 g.unlocked.add(a.id);
+                g.unlockedOn.put(a.id, Steps.today());
                 g.earn(60);
                 fresh.add(a);
             }
