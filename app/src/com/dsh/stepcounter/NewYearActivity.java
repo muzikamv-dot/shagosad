@@ -5,7 +5,6 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.RectF;
@@ -14,8 +13,6 @@ import android.graphics.drawable.GradientDrawable;
 import android.media.AudioAttributes;
 import android.media.SoundPool;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -91,16 +88,6 @@ public class NewYearActivity extends Activity {
         lp.topMargin = dp(34);
         lp.leftMargin = dp(16);
         lp.rightMargin = dp(16);
-        return lp;
-    }
-
-    private FrameLayout.LayoutParams trayParams() {
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.gravity = Gravity.BOTTOM;
-        lp.bottomMargin = dp(16);
-        lp.leftMargin = dp(10);
-        lp.rightMargin = dp(10);
         return lp;
     }
 
@@ -664,20 +651,12 @@ public class NewYearActivity extends Activity {
             game.nyPlaced = sb.toString();
         }
 
-        int placedCount() {
-            return placed.size();
-        }
-
         boolean isPlaced(int id) {
             for (Placed p : placed) if (p.id == id) return true;
             return false;
         }
 
         /** Взять игрушку из коробки и тащить по экрану. */
-        boolean isDragging() {
-            return dragIndex >= 0;
-        }
-
         void beginBoxDrag(int id, float nx, float ny) {
             if (isPlaced(id)) return;
             Placed p = new Placed();
@@ -686,14 +665,6 @@ public class NewYearActivity extends Activity {
             p.ny = clamp(ny, 0.03f, 0.98f);
             placed.add(p);
             dragIndex = placed.size() - 1;
-            invalidate();
-        }
-
-        void moveBoxDrag(float nx, float ny) {
-            if (dragIndex < 0 || dragIndex >= placed.size()) return;
-            Placed p = placed.get(dragIndex);
-            p.nx = clamp(nx, 0.02f, 0.98f);
-            p.ny = clamp(ny, 0.03f, 0.98f);
             invalidate();
         }
 
@@ -709,16 +680,6 @@ public class NewYearActivity extends Activity {
                 }
             }
             dragIndex = -1;
-            savePlaced();
-            invalidate();
-        }
-        void placeOrnament(int id) {
-            if (isPlaced(id)) return;
-            Placed p = new Placed();
-            p.id = id;
-            p.nx = 0.40f + rnd.nextFloat() * 0.20f;
-            p.ny = 0.44f + rnd.nextFloat() * 0.26f;
-            placed.add(p);
             savePlaced();
             invalidate();
         }

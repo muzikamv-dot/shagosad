@@ -10,7 +10,6 @@ import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
@@ -228,17 +227,6 @@ public final class Updater {
         activity.startActivity(i);
     }
 
-    /** Установлено ли приложение из магазина (тогда обновления приходят оттуда). */
-    public static boolean fromStore(Activity a) {
-        try {
-            String installer = a.getPackageManager()
-                    .getInstallSourceInfo(a.getPackageName()).getInstallingPackageName();
-            return installer != null && (installer.contains("rustore") || installer.contains("vending"));
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
     /** Окно при запуске: «Есть обновление» с кнопками «Позже» и «Обновить». */
     public static void promptIfUpdate(final Activity activity) {
         promptAttempt(activity, 0);
@@ -371,10 +359,5 @@ public final class Updater {
             }
         });
         dialog.show();
-    }
-    static boolean hasInstallPermission(Activity a) {
-        if (Build.VERSION.SDK_INT < 26) return true;
-        PackageManager pm = a.getPackageManager();
-        return pm.canRequestPackageInstalls();
     }
 }

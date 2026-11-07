@@ -289,27 +289,7 @@ final class Weather {
      * ~200 КБ и отдаётся десятки секунд), а компактную строку формата —
      * она приходит за полсекунды: «Overcast|+6°C|0.0mm».
      */
-    /** Название места через системный геокодер: локальное, в языке телефона. */
-    private static boolean fetchCityGeocoder(Context ctx, float lat, float lon) {
-        try {
-            if (!android.location.Geocoder.isPresent()) return false;
-            android.location.Geocoder g =
-                    new android.location.Geocoder(ctx, java.util.Locale.getDefault());
-            java.util.List<android.location.Address> list = g.getFromLocation(lat, lon, 1);
-            if (list == null || list.isEmpty()) return false;
-            android.location.Address a = list.get(0);
-            String name = a.getLocality();
-            if (name == null || name.trim().isEmpty()) name = a.getSubAdminArea();
-            if (name == null || name.trim().isEmpty()) name = a.getAdminArea();
-            if (looksLikePlace(name)) {
-                Steps.prefs(ctx).edit().putString(K_CITY, name.trim()).apply();
-                return true;
-            }
-        } catch (Exception ignored) { }
-        return false;
-    }
-
-    /** Название места: сначала геокодер, потом лёгкий запрос к wttr. */
+    /** Название места лёгким запросом к wttr (город приходит и в ответе погоды). */
     private static void fetchCityOnly(Context ctx, float lat, float lon) {
         if (city(ctx).length() > 0) return;
         try {

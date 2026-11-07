@@ -592,11 +592,6 @@ public final class Postcard {
         }
         return out;
     }
-    /** Наступающий год: для сезона декабря 2026 — 2027. */
-    private static int currentNewYear() {
-        return NewYear.seasonYear() + 1;
-    }
-
     private static float lerp(float a, float b, float t) {
         return a + (b - a) * Math.max(0f, Math.min(1f, t));
     }

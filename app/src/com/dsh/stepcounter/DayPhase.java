@@ -433,6 +433,21 @@ final class DayPhase {
         return Math.max(-1.15f, Math.min(1.15f, u)) / 1.15f;
     }
 
+    /**
+     * Сторона света для цветка: −1 свет слева, 0 сверху, +1 справа.
+     * Пока солнце над горизонтом — по его настоящему азимуту, иначе свет верхний.
+     */
+    static float sunSide(Context ctx) {
+        try {
+            long now = System.currentTimeMillis();
+            float[] sun = SunMoon.sun(now, lat(ctx), lon(ctx));
+            if (sun == null || sun.length < 2 || sun[0] < -1f) return 0f;
+            return Math.max(-1f, Math.min(1f, skyU(sun[1])));
+        } catch (Exception e) {
+            return 0f;
+        }
+    }
+
     /** Горизонталь светила: раздвинута к краям, чтобы диск обходил цветок. */
     private static float posX(RectF card, float az) {
         return card.centerX() + skyU(az) * card.width() * 0.46f;

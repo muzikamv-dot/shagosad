@@ -17,8 +17,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.PowerManager;
-import android.provider.Settings;
 import android.text.InputType;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -32,18 +30,12 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.Toast;
 import android.widget.TextView;
 
-import org.json.JSONObject;
-
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
 import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -66,7 +58,6 @@ public class MainActivity extends Activity {
     private TextView statP, statS, statW, statT;
     private TextView dBest, dAvg, dTotal, dDays, dFlowers, dSpecies;
     private Button goalButton;
-    private LinearLayout medalRow;
     private Button shopButton, herbButton, bagButton, achButton;
 
     private TextView headerTime, headerSub;
@@ -762,13 +753,6 @@ public class MainActivity extends Activity {
         return Ui.secondary(this, text);
     }
 
-    private LinearLayout.LayoutParams outlineParams() {
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(46));
-        p.topMargin = dp(6);
-        return p;
-    }
-
     // ---------------- данные ----------------
 
     private int sensorSteps() {
@@ -858,22 +842,10 @@ public class MainActivity extends Activity {
         checkAchievements();
     }
 
-    private TextView permBtn;
-
     // Достижение за собранный цветок иначе всплывает поверх диалога с открыткой
     // и закрывает его кнопки — придерживаем его до закрытия диалога.
     private boolean cardFlowActive;
     private String pendingAch;
-
-    private void permNeeded() {
-        if (permBtn == null) return;
-        permBtn.setVisibility(View.VISIBLE);
-    }
-
-    private void permDone() {
-        if (permBtn == null) return;
-        permBtn.setVisibility(View.GONE);
-    }
 
     private void updateHistory(int steps) {
         // график: сохранённые дневные итоги + журнал (журнал главнее)
@@ -1710,9 +1682,8 @@ public class MainActivity extends Activity {
         actions2.addView(achButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
         root.addView(actions2, ap2);
 
-        // Медали в профиле больше не показываем: они живут в отдельном экране
-        // «Достижения» (кнопка в ряду выше). medalRow остаётся null,
-        // и rebuildMedals() выходит сразу — остальной код не ломается.
+        // Медали в профиле не показываем: они живут в отдельном экране
+        // «Достижения» (кнопка в ряду выше).
 
         LinearLayout row1 = new LinearLayout(this);
         row1.setOrientation(LinearLayout.HORIZONTAL);
@@ -2047,40 +2018,6 @@ public class MainActivity extends Activity {
     }
 
 
-    private void rebuildMedals() {
-        if (medalRow == null) return;
-        medalRow.removeAllViews();
-
-        TextView label = new TextView(this);
-        label.setText("МЕДАЛИ");
-        label.setTextColor(Theme.FAINT);
-        label.setTextSize(Ui.T_CAPS);
-        label.setLetterSpacing(0.10f);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.rightMargin = dp(10);
-        medalRow.addView(label, lp);
-
-        int shown = 0;
-        for (Achievements.Ach a : Achievements.ALL) {
-            if (!game.unlocked.contains(a.id) || shown >= 6) continue;
-            ImageView iv = new ImageView(this);
-            int rid = getResources().getIdentifier("medal_" + a.id, "drawable", getPackageName());
-            if (rid != 0) iv.setImageResource(rid);
-            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(34), dp(34));
-            p.rightMargin = dp(6);
-            medalRow.addView(iv, p);
-            shown++;
-        }
-        if (shown == 0) {
-            TextView empty = new TextView(this);
-            empty.setText("пока нет — вырастите первый цветок");
-            empty.setTextColor(Theme.FAINT);
-            empty.setTextSize(10);
-            medalRow.addView(empty);
-        }
-    }
-
     private void refreshProfile() {
         if (nickView == null) return;
         avatar.setStyle(game.avatarStyle, game.avatarPalette);
@@ -2107,7 +2044,6 @@ public class MainActivity extends Activity {
         if (shopButton != null) shopButton.setText("Магазин");
         if (herbButton != null) herbButton.setText("Коллекция");
         if (bagButton != null) bagButton.setText("Инвентарь");
-        rebuildMedals();
 
         int days = Math.max(1, game.daysInGarden());
 
@@ -2350,57 +2286,10 @@ public class MainActivity extends Activity {
         requestPermissions(need.toArray(new String[0]), REQ_PERMS);
     }
 
-    private void askManualSteps() {
-        final EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_NUMBER);
-        input.setHint("например 5000");
-        input.setTextColor(Theme.TEXT);
-        input.setHintTextColor(Theme.FAINT);
-
-        new AlertDialog.Builder(this)
-                .setTitle("Начислить шаги (тест)")
-                .setMessage("Добавится к сегодняшним шагам и превратится в воду.")
-                .setView(input)
-                .setPositiveButton("Начислить", new DialogInterface.OnClickListener() {
-                    @Override public void onClick(DialogInterface d, int w) {
-                        try {
-                            int add = Integer.parseInt(input.getText().toString().trim());
-                            SharedPreferences p = getSharedPreferences(Steps.PREFS, MODE_PRIVATE);
-                            manualSteps();
-                            p.edit().putInt("manual_steps", p.getInt("manual_steps", 0) + add).apply();
-                            refreshAll();
-                        } catch (Exception ignored) { }
-                    }
-                })
-                .setNeutralButton("Сбросить", new DialogInterface.OnClickListener() {
-                    @Override public void onClick(DialogInterface d, int w) {
-                        getSharedPreferences(Steps.PREFS, MODE_PRIVATE)
-                                .edit().putInt("manual_steps", 0).apply();
-                        refreshAll();
-                    }
-                })
-                .setNegativeButton("Отмена", null)
-                .show();
-    }
-
     private boolean hasStepPermission() {
         if (Build.VERSION.SDK_INT < 29) return true;
         return checkSelfPermission("android.permission.ACTIVITY_RECOGNITION")
                 == PackageManager.PERMISSION_GRANTED;
-    }
-
-    private boolean batteryExempt() {
-        if (Build.VERSION.SDK_INT < 23) return true;
-        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-        return pm != null && pm.isIgnoringBatteryOptimizations(getPackageName());
-    }
-
-    private void askBatteryExemption() {
-        try {
-            Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-            i.setData(Uri.parse("package:" + getPackageName()));
-            startActivity(i);
-        } catch (Exception ignored) { }
     }
 
     private void toggleService() {

@@ -144,10 +144,74 @@ public final class Species {
     }
 
     public static int stemColor(int id) {
-        return Color.HSVToColor(new float[]{(120f + (id % 3) * 8f) % 360f, 0.55f, 0.62f});
+        // семь оттенков зелени вместо трёх: стебли и листья тоже должны различаться
+        return Color.HSVToColor(new float[]{(112f + (id % 7) * 6f) % 360f,
+                0.48f + (id % 3) * 0.06f, 0.60f});
     }
 
     public static int accent(int id) {
         return Color.HSVToColor(new float[]{hue(id), 0.55f, 0.95f});
     }
+
+    // ---- признаки генератора (постоянны для вида) ----
+    //
+    // Признаки считаются через перемешивание номера, а не делением по кругу:
+    // иначе ширина, кончик и цвет менялись бы строго вместе с id, и соседние
+    // виды снова выглядели бы одинаково.
+
+    private static int mix(int x) {
+        x ^= x >>> 16;
+        x *= 0x7feb352d;
+        x ^= x >>> 15;
+        x *= 0x846ca68b;
+        x ^= x >>> 16;
+        return x & 0x7fffffff;
+    }
+
+    private static int pick(int id, int salt, int n) {
+        return mix(id * 31 + salt * 1013904223) % n;
+    }
+
+    private static float unit(int id, int salt) {
+        return pick(id, salt, 1024) / 1023f;
+    }
+
+    /** Семейство цветка: тот же номер, что у формы в названии (0…23). */
+    public static int family(int id) { return Math.abs(id) % FORM.length; }
+
+    /** Ширина лепестка относительно длины: 0,76…1,32. */
+    public static float petalWidth(int id) { return 0.76f + unit(id, 11) * 0.56f; }
+
+    /** Волнистость края: 0 — гладкий, 1 — сильно волнистый. */
+    public static float petalWave(int id) { return unit(id, 23); }
+
+    /** Наклон лепестка к центру (чаша): 0 — плоский, 1 — глубоко выгнутый. */
+    public static float petalTilt(int id) { return unit(id, 37); }
+
+    /** Форма кончика: 0 круглый, 1 острый, 2 бахромчатый, 3 с выемкой. */
+    public static int petalTip(int id) { return pick(id, 41, 4); }
+
+    /** Размер головки относительно растения: 0,20…0,33. */
+    public static float headScale(int id) { return 0.20f + unit(id, 53) * 0.13f; }
+
+    /** Схема цвета: 0 одноцвет, 1 кайма, 2 двухцветные ряды, 3 контрастная серединка, 4 глубокий + пастель. */
+    public static int colorScheme(int id) { return pick(id, 67, 5); }
+
+    /** Сдвиг тона для второго ряда лепестков, градусы (только близкие тона). */
+    public static float accentShift(int id) {
+        int[] s = {18, 24, 30, -20, -28};
+        return s[pick(id, 71, s.length)];
+    }
+
+    /** Наклон стебля: −0,5…+0,5. */
+    public static float stemLean(int id) { return unit(id, 83) - 0.5f; }
+
+    /** Разброс листьев: 0,85…1,35. */
+    public static float leafSpread(int id) { return 0.85f + unit(id, 97) * 0.5f; }
+
+    /** Высота стебля относительно размера растения: 0,58…0,78. */
+    public static float stemHeight(int id) { return 0.58f + unit(id, 113) * 0.20f; }
+
+    /** Поворот всей головки, градусы: −14…+14, чтобы цветки не стояли «по линейке». */
+    public static float headTurn(int id) { return (unit(id, 127) - 0.5f) * 28f; }
 }

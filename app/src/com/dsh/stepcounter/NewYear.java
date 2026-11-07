@@ -143,32 +143,11 @@ public final class NewYear {
         return now >= start() && now <= end();
     }
 
-    /** Сколько дней осталось до конца окна (для подписи). */
-    public static long daysLeft() {
-        long ms = end() - System.currentTimeMillis();
-        return ms <= 0 ? 0 : ms / 86400000L + 1;
-    }
-
-    /** Сегодняшний день декабря (1…31) или -1, если сейчас не декабрь. */
-    public static int todayDay() {
-        java.util.Calendar c = java.util.Calendar.getInstance();
-        if (c.get(java.util.Calendar.MONTH) == java.util.Calendar.DECEMBER) {
-            return c.get(java.util.Calendar.DAY_OF_MONTH);
-        }
-        return -1;
-    }
-
     /** Сколько дней осталось до старта ивента (0 — уже начался). */
     public static long daysToStart() {
         long ms = start() - System.currentTimeMillis();
         if (ms <= 0) return 0;
         return (ms + 86399999L) / 86400000L;
-    }
-
-    /** Дней до конца ивента (0 — уже закончился). */
-    public static long daysLeftInEvent() {
-        long ms = end() - System.currentTimeMillis();
-        return ms <= 0 ? 0 : ms / 86400000L;
     }
 
     /** Пора показывать афишу: за 20 дней до старта и до самого старта. */

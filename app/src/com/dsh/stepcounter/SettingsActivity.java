@@ -16,7 +16,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.PowerManager;
 import android.provider.Settings;
 import android.text.InputType;
 import android.util.TypedValue;
@@ -971,7 +970,7 @@ public class SettingsActivity extends Activity {
             new android.app.AlertDialog.Builder(this)
                     .setTitle("Журнал выгружен")
                     .setMessage("Файл: " + out.getAbsolutePath()
-                            + "\\n\\nЕго можно отправить с телефона (файловый менеджер, "
+                            + "\n\nЕго можно отправить с телефона (файловый менеджер, "
                             + "«Поделиться») или забрать по USB.")
                     .setPositiveButton("Закрыть", null)
                     .show();
@@ -981,25 +980,6 @@ public class SettingsActivity extends Activity {
         }
     }
 
-    /**
-     * Установлено ли приложение из магазина (RuStore, Google Play и подобные).
-     * При сайдлоаде через adb установщика нет — значит это сборка для разработки,
-     * и меню разработчика можно показывать.
-     */
-    private boolean installedFromStore() {
-        if (android.os.Build.VERSION.SDK_INT < 30) return false;
-        try {
-            String installer = getPackageManager()
-                    .getInstallSourceInfo(getPackageName())
-                    .getInstallingPackageName();
-            if (installer == null) return false;
-            String p = installer.toLowerCase();
-            return p.contains("rustore") || p.contains("store") || p.contains("vending")
-                    || p.contains("huawei") || p.contains("samsung");
-        } catch (Exception e) {
-            return false;
-        }
-    }
     private void runDiag() {
         diagView.setText("Опрашиваю датчик…");
         new Thread(new Runnable() {

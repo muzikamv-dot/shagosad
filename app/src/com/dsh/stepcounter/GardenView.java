@@ -1,8 +1,6 @@
 package com.dsh.stepcounter;
 
 import android.content.Context;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
@@ -29,7 +27,6 @@ public class GardenView extends View {
     private GameState game;
     private Listener listener;
     private float d;
-    private final Bitmap[] sprites = new Bitmap[120];
 
     public static final String[] SPECIES_NAMES = {"Ромашка", "Пион", "Лаванда", "Мак", "Ирис", "Роза",
             "Тюльпан", "Подсолнух", "Лотос", "Звёздный", "Лунная лилия", "Кристальный"};
@@ -325,18 +322,6 @@ public class GardenView extends View {
         sparkAnim.start();
     }
 
-    private Bitmap sprite(int species, int stage) {
-        int idx = species * 10 + stage;
-        if (sprites[idx] == null) {
-            try {
-                int id = getResources().getIdentifier("plant_" + species + "_" + stage,
-                        "drawable", getContext().getPackageName());
-                if (id != 0) sprites[idx] = BitmapFactory.decodeResource(getResources(), id);
-            } catch (Exception ignored) { }
-        }
-        return sprites[idx];
-    }
-
     private void label(Canvas c, String s, float x, float y, float size, int color, Paint.Align align, boolean medium) {
         tx.setTextSize(size * d);
         tx.setColor(color);
@@ -439,7 +424,10 @@ public class GardenView extends View {
         if (game.withered) {
             drawWithered(c, w / 2f, plantBottom, fsize, time, plantAlpha);
         } else {
-            KawaiiPlant.draw(c, species, stage, w / 2f, plantBottom, fsize, time, wind);
+            // свет падает с той стороны, где сейчас солнце: лепестки с этой стороны
+            // получают блик, противоположные уходят в тень
+            KawaiiPlant.draw(c, species, stage, w / 2f, plantBottom, fsize, time, wind,
+                    DayPhase.sunSide(getContext()));
         }
         c.restore();
         p.setAlpha(255);

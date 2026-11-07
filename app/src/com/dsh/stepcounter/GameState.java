@@ -8,7 +8,6 @@ import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
-import java.io.FileWriter;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -127,7 +126,6 @@ public class GameState {
     /** Уровень считается от заработанного за всё время, а не от остатка. */
     public static int level(int earnedPoints) { return 1 + earnedPoints / 100; }
     public int level() { return level(earned); }
-    public int levelProgress() { return earned % 100; }
 
     /** Начислить очки: баланс и «заработано за всё время» растут вместе. */
     public void earn(int n) {

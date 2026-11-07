@@ -47,11 +47,6 @@ public final class Event {
         Steps.prefs(ctx).edit().putInt(PREF_MODE, m).apply();
     }
 
-    /** Ивент включён вручную. */
-    static boolean forced(Context ctx) {
-        return mode(ctx) == 1;
-    }
-
     private static long at(int day, int hour, int minute, int second, int millis) {
         Calendar c = Calendar.getInstance();
         c.set(Calendar.YEAR, 2026);
@@ -85,10 +80,5 @@ public final class Event {
         if (m == 2) return true;
         if (m == 1) return false;
         return System.currentTimeMillis() > end();
-    }
-
-    /** До ивента ещё далеко: показываем анонс. */
-    static boolean upcoming(Context ctx) {
-        return mode(ctx) == 0 && System.currentTimeMillis() < start();
     }
 }
