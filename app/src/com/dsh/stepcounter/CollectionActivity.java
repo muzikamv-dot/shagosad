@@ -129,7 +129,7 @@ public class CollectionActivity extends Activity {
         slots.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        slp.topMargin = dp(8);
+        slp.topMargin = dp(5);
         for (int i = 0; i < 4; i++) {
             // первый слот — праздничный цветок, если открытка уже получена
             // ёлка: отдельный слот, если собрана новогодняя открытка
@@ -211,9 +211,12 @@ public class CollectionActivity extends Activity {
         unSlots.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams uslp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        uslp.topMargin = dp(8);
+        uslp.topMargin = dp(5);
 
         final GameState.Card magicCard = findCard(Magic.SPECIES);
+        // Если необычных цветов ещё нет, четыре пустые рамки зря съедали пол-экрана
+        // и не давали увидеть полки сезонов ниже.
+        if (magicCard != null) {
         for (int i = 0; i < 4; i++) {
             if (i == 0 && magicCard != null) {
                 ImageView got = new ImageView(this);
@@ -251,20 +254,29 @@ public class CollectionActivity extends Activity {
         }
         unusual.addView(unSlots, uslp);
 
-        TextView unHint = new TextView(this);
-        unHint.setText("цветы из семечек магазина — их не встретить в саду случайно");
-        unHint.setTextColor(Theme.FAINT);
-        unHint.setTextSize(9.5f);
-        LinearLayout.LayoutParams uhp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        uhp.topMargin = dp(7);
-        unusual.addView(unHint, uhp);
+            TextView unHint = new TextView(this);
+            unHint.setText("цветы из семечек магазина — их не встретить в саду случайно");
+            unHint.setTextColor(Theme.FAINT);
+            unHint.setTextSize(9.5f);
+            LinearLayout.LayoutParams uhp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            uhp.topMargin = dp(7);
+            unusual.addView(unHint, uhp);
+        } else {
+            TextView unEmpty = new TextView(this);
+            unEmpty.setText("пока пусто — такие семена бывают в магазине");
+            unEmpty.setTextColor(Theme.FAINT);
+            unEmpty.setTextSize(9.5f);
+            unEmpty.setPadding(0, dp(6), 0, 0);
+            unusual.addView(unEmpty);
+        }
         root.addView(unusual);
 
         // Медали: превью полученных, чтобы коллекция показывала не только цветы
         root.addView(medalsBlock());
 
         grid = new CollectionView(this);
+        grid.setMinimumHeight(dp(240));
         grid.setListener(new CollectionView.Listener() {
             @Override public void onSpeciesTap(int species, boolean collected) {
                 if (collected) openCard(species);
@@ -292,7 +304,7 @@ public class CollectionActivity extends Activity {
         hint.setText("нажми на медаль — вспомнишь, за что она");
         hint.setTextColor(Theme.FAINT);
         hint.setTextSize(9.5f);
-        hint.setPadding(dp(16), dp(12), dp(16), 0);
+        hint.setPadding(dp(16), dp(8), dp(16), dp(2));
         box.addView(hint);
         return box;
     }
@@ -302,7 +314,7 @@ public class CollectionActivity extends Activity {
         final int pad = dp(16);
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(pad, dp(10), pad, dp(2));
+        box.setPadding(pad, dp(6), pad, dp(1));
 
         final java.util.ArrayList<Achievements.Ach> got = new java.util.ArrayList<>();
         int total = 0;
@@ -357,7 +369,7 @@ public class CollectionActivity extends Activity {
             coin.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) { showAchievement(a); }
             });
-            LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(dp(54), dp(54));
+            LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(dp(42), dp(42));
             if (i > 0) ilp.leftMargin = dp(8);
             row.addView(coin, ilp);
         }
@@ -376,7 +388,7 @@ public class CollectionActivity extends Activity {
         holder.addView(row, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        slp.topMargin = dp(8);
+        slp.topMargin = dp(5);
         box.addView(holder, slp);
         return box;
     }

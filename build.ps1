@@ -6,7 +6,8 @@ param(
     [string]$Out = 'out-pc',
     [switch]$Install,
     [switch]$FreshRes,
-    [switch]$Store
+    [switch]$Store,
+    [switch]$NoPhone          # собрать и выгрузить в папку, но НЕ ставить на телефон
 )
 
 # Continue, а не Stop: PowerShell 5.1 считает любой stderr нативной программы
@@ -153,8 +154,12 @@ Write-Host ("        SHA256 {0}" -f (Get-FileHash $apk.FullName -Algorithm SHA25
 if ($Install) {
     Write-Host ''
     Write-Host 'Установка обновлением на телефон...' -ForegroundColor Cyan
-    & $adb install -r $apk.FullName
-    Check 'adb install'
+    if (-not $NoPhone) {
+        & $adb install -r $apk.FullName
+        Check 'adb install'
+    } else {
+        Write-Host '        на телефон не ставлю (-NoPhone: обновления только из RuStore)' -ForegroundColor DarkGray
+    }
 
     # ---------- выгрузка в папку телефона ----------
     # Папка Download/Шагомер — то, откуда APK пересылают людям. Раньше она

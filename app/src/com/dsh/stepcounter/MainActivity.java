@@ -18,6 +18,10 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.RelativeSizeSpan;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -801,14 +805,24 @@ public class MainActivity extends Activity {
     private void refreshWaterCard() {
         if (waterCount != null) waterCount.set(game.water);
         if (cardStreak != null) cardStreak.setText(game.streak + " дн.");
-        if (nextLeek != null) {
-            if (game.waterStopped()) {
-                nextLeek.setText("цветок засох — шаги не дают воду");
-            } else if (game.waterHalved()) {
-                nextLeek.setText("до лейки " + Ui.steps(game.waterToNext()) + " · сорняки мешают");
-            } else {
-                nextLeek.setText("до лейки " + Ui.steps(game.waterToNext()));
-            }
+        if (nextLeek == null) return;
+        if (game.waterStopped()) {
+            // Засохший цветок: про «ещё 0 шагов» писать нечего, нужна одна понятная строка.
+            nextLeek.setText("цветок засох: вода не копится");
+            return;
+        }
+        String main = "ещё " + Ui.steps(game.waterToNext()) + " — и новая лейка";
+        if (game.waterHalved()) {
+            // Вторая строка поясняет, почему копится медленнее, — иначе цифра выглядит странно.
+            String hint = "сорняк на грядке: замедляет накопление воды.";
+            SpannableStringBuilder sb = new SpannableStringBuilder(main + "\n" + hint);
+            sb.setSpan(new RelativeSizeSpan(0.86f), main.length() + 1, sb.length(),
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            sb.setSpan(new ForegroundColorSpan(Theme.MUTED), main.length(), sb.length(),
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            nextLeek.setText(sb);
+        } else {
+            nextLeek.setText(main);
         }
     }
 
@@ -826,10 +840,9 @@ public class MainActivity extends Activity {
         game.syncSteps(Steps.today(), steps);
         game.save(this);
 
-        if (nextLeek != null) {
-            int toNext = game.waterToNext();
-            nextLeek.setText("до лейки " + Ui.steps(toNext));
-        }
+        // Надпись обновляем только здесь: раньше её перетирала эта же строка и
+        // пропадали пояснения «сорняки» и «цветок засох».
+        refreshWaterCard();
         updateHistory(steps);
         updatePill(steps);
 
