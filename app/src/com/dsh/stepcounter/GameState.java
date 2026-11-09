@@ -27,46 +27,68 @@ public class GameState {
     public static final int SPECIES_COUNT = Species.COUNT;
 
     /**
-     * Купленное волшебное семечко ждёт свободной грядки. Растущий цветок оно
-     * не трогает: прорастёт, когда текущий будет собран.
+     * Купленное редкое семечко ждёт свободной грядки (номер вида редкого цветка,
+     * 0 — ничего не ждёт). Растущий цветок оно не трогает: прорастёт, когда
+     * текущий будет собран.
      */
-    public boolean magicReady = false;
+    /** Очередь купленных редких семечек: −2, −3 … Сажаются по одному, по порядку. */
+    public final java.util.ArrayList<Integer> rareQueue = new java.util.ArrayList<>();
 
-    /** Пустая грядка: можно посадить волшебное семечко из магазина. */
+    /** Пустая грядка: можно посадить редкое семечко из магазина. */
     public boolean plotEmpty() {
         return !withered && weeds == 0 && stage[0] == 0;
     }
 
     /**
-     * Купить волшебное семечко: на свободную грядку сажается сразу, а если
+     * Купить редкое семечко: на свободную грядку сажается сразу, а если
      * цветок ещё растёт — ждёт его сбора (растущий не трогаем).
      */
-    public void queueMagic() {
-        if (plotEmpty()) {
-            plantMagic();
-        } else {
-            magicReady = true;
-        }
+    public void queueRare(int speciesId) {
+        if (!Rare.isRare(speciesId)) return;
+        rareQueue.add(speciesId);
+        plantQueuedIfFree();
+    }
+
+    /** Посадить первое семечко из очереди, если грядка свободна. */
+    public boolean plantQueuedIfFree() {
+        if (!plotEmpty() || rareQueue.isEmpty()) return false;
+        int id = rareQueue.remove(0).intValue();
+        return plantRare(id);
+    }
+
+    /** Сколько редких семечек ждёт очереди. */
+    public int rareQueuedCount() {
+        return rareQueue.size();
+    }
+
+    /** Ждёт ли в очереди именно этот вид. */
+    public boolean hasQueuedRare(int speciesId) {
+        return rareQueue.contains(speciesId);
     }
 
     /**
-     * Посадить волшебную ромашку на грядку. Возвращает true, если получилось:
+     * Посадить редкий цветок на грядку. Возвращает true, если получилось:
      * грядка должна быть свободной, иначе прогресс обычного цветка потерялся бы.
      */
-    public boolean plantMagic() {
-        if (!plotEmpty()) return false;
-        species[0] = Magic.SPECIES;
+    public boolean plantRare(int speciesId) {
+        if (!Rare.isRare(speciesId) || !plotEmpty()) return false;
+        species[0] = speciesId;
         stage[0] = 0;
         withered = false;
         weeds = 0;
         neglect = 0;
-        magicReady = false;
+        rareQueue.clear();
         return true;
     }
 
-    /** Сейчас на грядке растёт волшебная ромашка. */
-    public boolean growingMagic() {
-        return species[0] == Magic.SPECIES;
+    /** Сейчас на грядке растёт редкий цветок. */
+    public boolean growingRare() {
+        return Rare.isRare(species[0]);
+    }
+
+    /** Какой именно редкий цветок растёт (0 — обычный). */
+    public int growingRareSpecies() {
+        return Rare.isRare(species[0]) ? species[0] : 0;
     }
 
     /** Версия правил игры. Растёт при перебалансировке — прогресс сбрасывается. */
@@ -209,7 +231,18 @@ public class GameState {
         g.eventSeed = o.optBoolean("evSeed", false);
         g.eventStage = o.optInt("evStage", 0);
         g.eventCard = o.optBoolean("evCard", false);
-        g.magicReady = o.optBoolean("magicReady", false);
+        // старое сохранение хранило только флаг волшебной ромашки
+        // очередь редких семечек: новое поле; старые сохранения хранили одно число или флаг
+        g.rareQueue.clear();
+        org.json.JSONArray rq = o.optJSONArray("rareQueue");
+        if (rq != null) {
+            for (int i = 0; i < rq.length(); i++) {
+                int id = rq.optInt(i, 0);
+                if (Rare.isRare(id)) g.rareQueue.add(id);
+            }
+        }
+        int legacyRare = o.optInt("rareQueued", o.optBoolean("magicReady", false) ? Rare.MAGIC : 0);
+        if (g.rareQueue.isEmpty() && Rare.isRare(legacyRare)) g.rareQueue.add(legacyRare);
         g.nyMask = o.optInt("nyMask", 0);
         g.nyPlaced = o.optString("nyPlaced", "");
         g.nyCard = o.optBoolean("nyCard", false);
@@ -361,7 +394,7 @@ public class GameState {
         eventSeed = false;
         eventStage = 0;
         eventCard = false;
-        magicReady = false;
+        rareQueue.clear();
         nyMask = 0;
         nyPlaced = "";
         nyCard = false;
@@ -506,7 +539,11 @@ public class GameState {
         o.put("evSeed", eventSeed);
         o.put("evStage", eventStage);
         o.put("evCard", eventCard);
-        o.put("magicReady", magicReady);
+        org.json.JSONArray rqOut = new org.json.JSONArray();
+        for (int i = 0; i < rareQueue.size(); i++) rqOut.put(rareQueue.get(i).intValue());
+        o.put("rareQueue", rqOut);
+        o.put("rareQueued", rareQueue.isEmpty() ? 0 : rareQueue.get(0).intValue());
+        o.put("magicReady", rareQueue.contains(Rare.MAGIC));   // совместимость со старыми сборками
         o.put("nyMask", nyMask);
         o.put("nyPlaced", nyPlaced);
         o.put("nyCard", nyCard);
@@ -849,16 +886,15 @@ public class GameState {
         }
         weekFlowers++;
         // у волшебной ромашки нет вида из Species — имя и пожелание берём у Magic
-        boolean magic = sp == Magic.SPECIES;
+        boolean rare = Rare.isRare(sp);
         cards.add(new Card(flowersTotal, sp,
-                magic ? Magic.NAME : Species.name(sp),
+                rare ? Rare.name(sp) : Species.name(sp),
                 Steps.today(),
-                magic ? Magic.WISH : Species.wish(sp)));
+                rare ? Rare.wish(sp) : Species.wish(sp)));
 
         stage[0] = 0;
-        // если куплено волшебное семечко — оно и занимает освободившуюся грядку
-        species[0] = magicReady ? Magic.SPECIES : nextSpecies();
-        magicReady = false;
+        // приоритет редким: купленное семечко всегда раньше случайного цветка
+        species[0] = rareQueue.isEmpty() ? nextSpecies() : rareQueue.remove(0).intValue();
         questsClaimed();   // задания по цветку и неделе закрываются сразу
     }
 

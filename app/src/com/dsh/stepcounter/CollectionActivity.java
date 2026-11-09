@@ -213,46 +213,49 @@ public class CollectionActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         uslp.topMargin = dp(5);
 
-        final GameState.Card magicCard = findCard(Magic.SPECIES);
-        // Если необычных цветов ещё нет, четыре пустые рамки зря съедали пол-экрана
-        // и не давали увидеть полки сезонов ниже.
-        if (magicCard != null) {
-        for (int i = 0; i < 4; i++) {
-            if (i == 0 && magicCard != null) {
-                ImageView got = new ImageView(this);
-                int rid = getResources().getIdentifier("magic_stage_10", "drawable", getPackageName());
-                if (rid != 0) got.setImageResource(rid);
-                got.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                GradientDrawable gold = new GradientDrawable();
-                gold.setColor(Theme.SURFACE_HI);
-                gold.setCornerRadius(dp(16));
-                gold.setStroke(dp(1), Theme.GOLD);
-                got.setBackground(gold);
-                got.setPadding(dp(6), dp(6), dp(6), dp(6));
-                got.setOnClickListener(new View.OnClickListener() {
-                    @Override public void onClick(View v) { openCard(Magic.SPECIES); }
-                });
-                LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(0, dp(104), 1f);
-                if (i > 0) gp.leftMargin = dp(10);
-                unSlots.addView(got, gp);
-                continue;
-            }
-            TextView slot = new TextView(this);
-            slot.setText("✿");
-            slot.setTextSize(20);
-            slot.setTextColor(Theme.STROKE);
-            slot.setGravity(Gravity.CENTER);
-            slot.setIncludeFontPadding(false);
-            GradientDrawable empty = new GradientDrawable();
-            empty.setColor(0x00000000);
-            empty.setCornerRadius(dp(16));
-            empty.setStroke(dp(1), Theme.CARD_STROKE);
-            slot.setBackground(empty);
-            LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(0, dp(104), 1f);
-            if (i > 0) ilp.leftMargin = dp(10);
-            unSlots.addView(slot, ilp);
+        // Необычные цветы: по рамке на каждый редкий вид из магазина.
+        // Пока ничего не собрано — одна строка вместо пустых рамок.
+        int filled = 0;
+        for (int species : Rare.ALL) {
+            final int sp = species;
+            if (findCard(species) == null) continue;
+            ImageView view = new ImageView(this);
+            android.graphics.Bitmap art = Rare.art(this, sp, Rare.STAGES);
+            if (art != null) view.setImageBitmap(art);
+            view.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            GradientDrawable gold = new GradientDrawable();
+            gold.setColor(Theme.SURFACE_HI);
+            gold.setCornerRadius(dp(16));
+            gold.setStroke(dp(1), Theme.GOLD);
+            view.setBackground(gold);
+            view.setPadding(dp(6), dp(6), dp(6), dp(6));
+            view.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { openCard(sp); }
+            });
+            LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(0, dp(104), 1f);
+            if (filled > 0) gp.leftMargin = dp(10);
+            unSlots.addView(view, gp);
+            filled++;
         }
-        unusual.addView(unSlots, uslp);
+
+        if (filled > 0) {
+            for (int i = filled; i < Math.max(4, Rare.ALL.length); i++) {
+                TextView slot = new TextView(this);
+                slot.setText("✿");
+                slot.setTextSize(20);
+                slot.setTextColor(Theme.STROKE);
+                slot.setGravity(Gravity.CENTER);
+                slot.setIncludeFontPadding(false);
+                GradientDrawable empty = new GradientDrawable();
+                empty.setColor(0x00000000);
+                empty.setCornerRadius(dp(16));
+                empty.setStroke(dp(1), Theme.CARD_STROKE);
+                slot.setBackground(empty);
+                LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(0, dp(104), 1f);
+                ilp.leftMargin = dp(10);
+                unSlots.addView(slot, ilp);
+            }
+            unusual.addView(unSlots, uslp);
 
             TextView unHint = new TextView(this);
             unHint.setText("цветы из семечек магазина — их не встретить в саду случайно");
@@ -444,6 +447,7 @@ public class CollectionActivity extends Activity {
             }
         }).start();
     }
+
 
     private GameState.Card findCard(int species) {
         List<GameState.Card> all = game.cards;

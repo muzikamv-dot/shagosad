@@ -84,6 +84,17 @@ public final class Ui {
         return n + " " + plural(n, "шаг", "шага", "шагов");
     }
 
+    /**
+     * Время в движении: до часа — минуты, дальше часы и минуты.
+     * «66 мин» человек ещё понимает, «950 мин» — уже нет.
+     */
+    public static String duration(int minutes) {
+        if (minutes < 60) return minutes + " мин";
+        int h = minutes / 60;
+        int m = minutes % 60;
+        if (m == 0) return h + " ч";
+        return h + " ч " + m + " мин";
+    }
     /** «1 цветок», «2 цветка», «5 цветов». */
     public static String flowers(int n) {
         return plural(n, "цветок", "цветка", "цветов");

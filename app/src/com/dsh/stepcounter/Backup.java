@@ -51,7 +51,7 @@ public final class Backup {
     public static String build(Context c) throws Exception {
         JSONObject o = new JSONObject();
         o.put("app", "stepcounter");
-        o.put("version", 2);
+        o.put("version", 4);
         o.put("exported", System.currentTimeMillis());
         o.put("garden", read(new File(c.getFilesDir(), "garden.json")));
         o.put("journal", read(new File(c.getFilesDir(), "journal.txt")));
@@ -73,7 +73,71 @@ public final class Backup {
             }
         } catch (Exception ignored) { }
         o.put("avatar", avatar);
+
+        // медали: какие достижения открыты (это в garden.json) и какие уже отпразднованы
+        org.json.JSONArray achShown = new org.json.JSONArray();
+        for (String id : Achievements.shown(c)) achShown.put(id);
+        o.put("achShown", achShown);
+
+        // ВСЕ настройки приложения: рост, вес, калории, тема, дневные итоги, служба,
+        // обучение, служебные метки журнала. Раньше копия их не сохраняла.
+        o.put("prefsSteps", dumpPrefs(c, Steps.PREFS));
+        o.put("prefsUi", dumpPrefs(c, "ui"));
         return o.toString();
+    }
+
+    /** Сложить все значения набора настроек в JSON с типами. */
+    private static JSONObject dumpPrefs(Context c, String name) {
+        JSONObject out = new JSONObject();
+        try {
+            android.content.SharedPreferences p =
+                    c.getSharedPreferences(name, Context.MODE_PRIVATE);
+            for (java.util.Map.Entry<String, ?> e : p.getAll().entrySet()) {
+                Object v = e.getValue();
+                JSONObject item = new JSONObject();
+                if (v instanceof Boolean) { item.put("t", "bool"); item.put("v", ((Boolean) v).booleanValue()); }
+                else if (v instanceof Integer) { item.put("t", "int"); item.put("v", ((Integer) v).intValue()); }
+                else if (v instanceof Long) { item.put("t", "long"); item.put("v", ((Long) v).longValue()); }
+                else if (v instanceof Float) { item.put("t", "float"); item.put("v", ((Float) v).doubleValue()); }
+                else if (v instanceof String) { item.put("t", "str"); item.put("v", v.toString()); }
+                else if (v instanceof java.util.Set) {
+                    org.json.JSONArray a = new org.json.JSONArray();
+                    for (Object s : (java.util.Set<?>) v) a.put(String.valueOf(s));
+                    item.put("t", "set");
+                    item.put("v", a);
+                } else continue;
+                out.put(e.getKey(), item);
+            }
+        } catch (Exception ignored) { }
+        return out;
+    }
+
+    /** Вернуть набор настроек ровно к состоянию копии: сначала очищаем, потом пишем. */
+    private static void restorePrefs(Context c, String name, JSONObject o) {
+        if (o == null) return;
+        try {
+            android.content.SharedPreferences.Editor ed =
+                    c.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear();
+            java.util.Iterator<String> it = o.keys();
+            while (it.hasNext()) {
+                String k = it.next();
+                JSONObject item = o.optJSONObject(k);
+                if (item == null) continue;
+                String t = item.optString("t");
+                if ("bool".equals(t)) ed.putBoolean(k, item.optBoolean("v"));
+                else if ("int".equals(t)) ed.putInt(k, item.optInt("v"));
+                else if ("long".equals(t)) ed.putLong(k, item.optLong("v"));
+                else if ("float".equals(t)) ed.putFloat(k, (float) item.optDouble("v"));
+                else if ("str".equals(t)) ed.putString(k, item.optString("v"));
+                else if ("set".equals(t)) {
+                    java.util.Set<String> set = new java.util.HashSet<>();
+                    org.json.JSONArray a = item.optJSONArray("v");
+                    if (a != null) for (int i = 0; i < a.length(); i++) set.add(a.optString(i));
+                    ed.putStringSet(k, set);
+                }
+            }
+            ed.apply();
+        } catch (Exception ignored) { }
     }
 
     /** Восстановить из JSON-строки. Возвращает число восстановленных файлов или -1. */
@@ -97,6 +161,25 @@ public final class Backup {
                     out.close();
                 } catch (Exception ignored) { }
             }
+
+            // медали: набор «отпразднованных» возвращаем к состоянию копии,
+            // иначе после загрузки остаются медали, полученные уже после сохранения
+            try {
+                java.util.Set<String> set = new java.util.HashSet<>();
+                if (o.has("achShown")) {
+                    org.json.JSONArray arr = o.optJSONArray("achShown");
+                    if (arr != null) {
+                        for (int i = 0; i < arr.length(); i++) set.add(arr.optString(i));
+                    }
+                }
+                Steps.prefs(c).edit().putStringSet(Achievements.PREF_SHOWN, set).apply();
+            } catch (Exception ignored) { }
+
+            // настройки: возвращаем оба набора целиком
+            try {
+                restorePrefs(c, Steps.PREFS, o.optJSONObject("prefsSteps"));
+                restorePrefs(c, "ui", o.optJSONObject("prefsUi"));
+            } catch (Exception ignored) { }
 
             int restored = journal.length() > 0 ? 2 : 1;
             if (avatar.length() > 0) restored++;

@@ -108,17 +108,27 @@ public class StatsActivity extends Activity {
         int minutes = Steps.minutesShown(this, steps, est);
         String kmText = String.format(Locale.US, "%.1f", steps * Steps.strideMeters(this) / 1000.0)
                 .replace('.', ',');
-        col.addView(card(new String[][]{
-                {Ui.steps(steps), "сегодня"},
-                {"≈ " + kmText + " км", "расстояние"},
-                {(est[0] ? "≈ " : "") + minutes + " мин", "в движении"}
-        }));
+        boolean calOn = Steps.showCalories(this);
+        if (calOn) {
+            col.addView(card(new String[][]{
+                    {fmt(steps), "сегодня"},
+                    {"≈ " + kmText + " км", "расстояние"},
+                    {(est[0] ? "≈ " : "") + Ui.duration(minutes), "в движении"},
+                    {"≈ " + fmt(Steps.calories(this, steps)), "ккал"}
+            }, 4));
+        } else {
+            col.addView(card(new String[][]{
+                    {fmt(steps), "сегодня"},
+                    {"≈ " + kmText + " км", "расстояние"},
+                    {(est[0] ? "≈ " : "") + Ui.duration(minutes), "в движении"}
+            }, 3));
+        }
 
         // ---------- калории (только если включены в настройках) ----------
         if (Steps.showCalories(this)) {
             TextView cal = new TextView(this);
-            cal.setText("≈ " + fmt(Steps.calories(this, steps)) + " ккал — оценка по весу ("
-                    + Steps.weightKg(this) + " кг) и шагам. Точной она не бывает.");
+            cal.setText("ккал — оценка по весу (" + Steps.weightKg(this)
+                    + " кг) и шагам, точной не бывает.");
             cal.setTextColor(Theme.FAINT);
             cal.setTextSize(10);
             LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
@@ -139,13 +149,24 @@ public class StatsActivity extends Activity {
         int avgMonth = daysMonth > 0 ? Math.round(sumMonth / (float) daysMonth) : 0;
         int avgWeek = Math.round(sumWeek / 7f);
 
+        // в статистике ШАГОВ серия — про норму шагов, а не про поливы
+        int normDays = 0;
+        for (int v : quarter) if (v >= game.goal) normDays++;
+        int normsStreak = Steps.stepsStreak(this, game.goal);
+        int actStreak = Steps.activityStreak(this);
+
         col.addView(section("РЕКОРДЫ"));
         col.addView(card(new String[][]{
-                {Ui.steps(best), "лучший день"},
-                {Ui.steps(avgMonth), "среднее за месяц"},
-                {Ui.steps(avgWeek), "среднее за неделю"},
-                {game.streak + " дн.", "серия подряд"}
+                {fmt(best), "лучший день"},
+                {fmt(avgMonth), "средн. за месяц"},
+                {actStreak + " дн.", "серия активности"},
+                {normsStreak + " дн.", "серия нормы"}
         }));
+        col.addView(card(new String[][]{
+                {fmt(avgWeek), "средн. за неделю"},
+                {fmt(sumMonth), "шагов за 30 дней"},
+                {normDays + " дн.", "дней с нормой"}
+        }, 3));
 
         // ---------- недельная цель ----------
         // недельная цель = семь дневных норм и меняется вместе с нормой
@@ -274,6 +295,11 @@ public class StatsActivity extends Activity {
 
     /** Карточка с колонками «значение — подпись». */
     private View card(String[][] items) {
+        return card(items, items.length);
+    }
+
+    /** Карточка, где размер цифры зависит от числа ячеек: четыре — мельче. */
+    private View card(String[][] items, int cells) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.HORIZONTAL);
         box.setPadding(dp(14), dp(14), dp(14), dp(12));
@@ -294,14 +320,18 @@ public class StatsActivity extends Activity {
             TextView value = new TextView(this);
             value.setText(it[0]);
             value.setTextColor(Theme.TEXT);
-            value.setTextSize(17);
+            value.setTextSize(cells >= 4 ? 14f : 17f);
+            // «40 000» и «100 000» не должны вылезать из своей ячейки
+            value.setSingleLine(true);
+            value.setAutoSizeTextTypeUniformWithConfiguration(9, (int) (cells >= 4 ? 14 : 17), 1,
+                    TypedValue.COMPLEX_UNIT_SP);
             value.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
             value.setGravity(Gravity.CENTER);
             cell.addView(value);
             TextView label = new TextView(this);
             label.setText(it[1]);
             label.setTextColor(Theme.FAINT);
-            label.setTextSize(9.5f);
+            label.setTextSize(cells >= 4 ? 8.5f : 9.5f);
             label.setGravity(Gravity.CENTER);
             label.setPadding(0, dp(3), 0, 0);
             cell.addView(label);

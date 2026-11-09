@@ -38,7 +38,7 @@ public final class Postcard {
     public static Bitmap render(Context ctx, GameState.Card card) {
         // праздничная открытка идёт по тому же шаблону, что коллекционные
         boolean ev = card != null && card.species == -1;
-        boolean magic = card != null && card.species == Magic.SPECIES;
+        boolean magic = card != null && Rare.isRare(card.species);
         Bitmap out = Bitmap.createBitmap(W * SCALE, H * SCALE, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(out);
         c.scale(SCALE, SCALE);
@@ -154,7 +154,7 @@ public final class Postcard {
             } catch (Exception ignored) { }
         } else if (magic) {
             // волшебная ромашка: готовая картинка раскрытого цветка
-            Bitmap flower = Magic.art(ctx, Magic.STAGES);
+            Bitmap flower = Rare.art(ctx, card.species, Rare.STAGES);
             if (flower != null) {
                 float fh = 520f;
                 float fw = fh * flower.getWidth() / flower.getHeight();

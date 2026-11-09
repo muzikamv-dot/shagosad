@@ -430,6 +430,46 @@ final class Steps {
         return (int) Math.max(0, Math.min(24 * 60, minutes));
     }
 
+    /**
+     * Серия активности: дни подряд, когда были хоть какие-то шаги.
+     * Сегодняшний день считается, только если шаги уже есть.
+     */
+    static int activityStreak(Context ctx) {
+        int[] days = lastDays(ctx, KEEP_DAYS);
+        int n = days.length;
+        if (n == 0) return 0;
+        int streak = 0;
+        for (int i = n - 1; i >= 0; i--) {
+            if (days[i] <= 0) {
+                if (i == n - 1) continue;   // сегодня ещё можно начать
+                break;
+            }
+            streak++;
+        }
+        return streak;
+    }
+
+    /**
+     * Серия дней подряд, когда пройдена дневная норма шагов.
+     * Сегодняшний день считается, только если норма уже набрана, — иначе
+     * вечером серия выглядела бы обнулённой.
+     */
+    static int stepsStreak(Context ctx, int goal) {
+        if (goal < 1) goal = GOAL;
+        int[] days = lastDays(ctx, KEEP_DAYS);
+        int n = days.length;
+        if (n == 0) return 0;
+        int streak = 0;
+        // идём от сегодня назад
+        for (int i = n - 1; i >= 0; i--) {
+            boolean reached = days[i] >= goal;
+            if (i == n - 1 && !reached) continue;   // сегодня ещё можно добить норму
+            if (!reached) break;
+            streak++;
+        }
+        return streak;
+    }
+
     /** Длина шага в метрах: из роста (см), по умолчанию 170 см. */
     static double strideMeters(Context ctx) {
         int height = prefs(ctx).getInt("height_cm", 170);

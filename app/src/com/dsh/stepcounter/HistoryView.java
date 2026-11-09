@@ -80,7 +80,7 @@ public class HistoryView extends View {
         // а столбики упираются в верх без запаса
         int maxValue = 0;
         for (int v : values) maxValue = Math.max(maxValue, v);
-        float scaleMax = Math.max(1000f, Math.max(maxValue, goal) * 1.12f);
+        float scaleMax = Math.max(1000f, Math.max(maxValue, goal) * 1.25f);
         float scale = chartH / scaleMax;
 
         for (int i = 0; i < values.length; i++) {
@@ -108,7 +108,7 @@ public class HistoryView extends View {
                 // если столбик высокий и подпись не помещается над ним, рисуем её
                 // внутри столбика тёмным — светлая на зелёном не читалась
                 boolean inside = false;
-                if (labelY < 12f * density) { labelY = top + 14f * density; inside = true; }
+                if (labelY < 17f * density) { labelY = top + 15f * density; inside = true; }
                 value.setColor(inside ? Theme.ON_ACCENT : Theme.ACCENT_SOFT);
                 // на 30 и 90 днях столбики узкие: цифры налезают друг на друга и
                 // обрезаются краем. Там их нет — сегодняшние шаги и так в кольце выше

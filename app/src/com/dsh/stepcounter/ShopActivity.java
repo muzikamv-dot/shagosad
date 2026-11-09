@@ -332,9 +332,11 @@ public class ShopActivity extends Activity {
     private void fillSeeds() {
         int before = list.getChildCount();
 
-        // волшебная ромашка: необычный цветок за очки. Купить можно всегда —
-        // если цветок в саду недорощён, семечко подождёт своей очереди
-        list.addView(magicSeedCard());
+        // необычные цветы за очки: ромашка, розовая заря и следующие
+        // Купить можно всегда — если цветок в саду недорощён, семечко подождёт.
+        for (int speciesId : Rare.ALL) {
+            list.addView(rareSeedCard(speciesId));
+        }
 
         // праздничное семечко: только во время ивента и только один раз
         if (Event.active(this) && !game.eventSeed && !game.eventCard) {
@@ -354,10 +356,11 @@ public class ShopActivity extends Activity {
         }
     }
 
-    /** Волшебная ромашка: покупается за очки, растёт в саду, даёт необычную открытку. */
-    private View magicSeedCard() {
-        boolean growing = game.growingMagic();
-        boolean waiting = !growing && game.magicReady;
+    /** Редкий цветок: покупается за очки, растёт в саду, даёт необычную открытку. */
+    private View rareSeedCard(final int species) {
+        boolean growing = game.growingRareSpecies() == species;
+        boolean waiting = !growing && game.hasQueuedRare(species);
+        final int priceValue = Rare.price(species);
 
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -373,9 +376,11 @@ public class ShopActivity extends Activity {
         head.setGravity(android.view.Gravity.CENTER_VERTICAL);
 
         ImageView icon = new ImageView(this);
-        int rid = getResources().getIdentifier("magic_seed_icon", "drawable", getPackageName());
-        if (rid == 0) rid = getResources().getIdentifier("magic_stage_01", "drawable", getPackageName());
-        if (rid != 0) icon.setImageResource(rid);
+        // сначала отдельный квадратный значок семечка, иначе — первый кадр цветка
+        int seedIconRes = Rare.seedIcon(this, species);
+        android.graphics.Bitmap seedArt = seedIconRes == 0 ? Rare.art(this, species, 0) : null;
+        if (seedIconRes != 0) icon.setImageResource(seedIconRes);
+        else if (seedArt != null) icon.setImageBitmap(seedArt);
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
         GradientDrawable ico = new GradientDrawable();
         ico.setColor(Theme.SURFACE);
@@ -391,14 +396,14 @@ public class ShopActivity extends Activity {
         texts.setOrientation(LinearLayout.VERTICAL);
 
         TextView t = new TextView(this);
-        t.setText(Magic.NAME);
+        t.setText(Rare.name(species));
         t.setTextColor(Theme.GOLD);
         t.setTextSize(13.5f);
         t.setTypeface(Ui.medium());
         texts.addView(t);
 
         TextView price = new TextView(this);
-        price.setText(Shop.money(Magic.PRICE) + " очков");
+        price.setText(Shop.money(priceValue) + " очков");
         price.setTextColor(Theme.TEXT);
         price.setTextSize(12);
         price.setPadding(0, dp(2), 0, 0);
@@ -414,9 +419,9 @@ public class ShopActivity extends Activity {
                         + "10 поливов — и открытка ваша."
                 : waiting
                         ? "Семечко куплено и ждёт: как только соберёте цветок в саду, "
-                                + "ромашка прорастёт на его месте."
+                                + "оно прорастёт на его месте."
                         : "Необычный цветок: 10 поливов в саду, затем открытка в коллекцию. "
-                                + "Если в саду ещё растёт цветок — ромашка начнёт расти после него, "
+                                + "Если в саду ещё растёт цветок — этот начнёт расти после него, "
                                 + "нынешний не пропадёт.");
         note.setTextColor(Theme.MUTED);
         note.setTextSize(11.5f);
@@ -438,17 +443,17 @@ public class ShopActivity extends Activity {
             buy.setText("Куплено · ждёт своей грядки");
             buy.setTextColor(Theme.GOLD);
             buy.setEnabled(false);
-        } else if (game.points >= Magic.PRICE) {
+        } else if (game.points >= priceValue) {
             bbg.setColor(Theme.GOLD);
             buy.setText("Купить");
             buy.setTextColor(0xFF2A1E00);
             buy.setEnabled(true);
             buy.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) { buyMagic(); }
+                @Override public void onClick(View v) { buyRare(species); }
             });
         } else {
             bbg.setColor(Theme.SURFACE);
-            buy.setText("Нужно " + Shop.money(Magic.PRICE) + " очков");
+            buy.setText("Нужно " + Shop.money(priceValue) + " очков");
             buy.setTextColor(Theme.MUTED);
             buy.setEnabled(false);
         }
@@ -459,21 +464,22 @@ public class ShopActivity extends Activity {
         return box;
     }
 
-    /** Купить волшебное семечко: на свободную грядку сажается сразу,
+    /** Купить редкое семечко: на свободную грядку сажается сразу,
      *  а если цветок ещё растёт — ждёт его сбора, ничего не портя. */
-    private void buyMagic() {
-        if (game.growingMagic() || game.magicReady) return;
-        if (game.points < Magic.PRICE) {
+    private void buyRare(int speciesId) {
+        if (game.growingRareSpecies() == speciesId) return;
+        int cost = Rare.price(speciesId);
+        if (game.points < cost) {
             Toast.makeText(this, "Не хватает очков", Toast.LENGTH_SHORT).show();
             return;
         }
         boolean free = game.plotEmpty();
-        game.points -= Magic.PRICE;
-        game.queueMagic();
+        game.points -= cost;
+        game.queueRare(speciesId);
         game.save(this);
         Toast.makeText(this, free
                         ? "Семечко посажено — растите его в саду"
-                        : "Семечко будет ждать: соберёте текущий цветок — и ромашка прорастёт",
+                        : "Семечко будет ждать: соберёте текущий цветок — и редкий цветок прорастёт",
                 Toast.LENGTH_LONG).show();
         selectTab(2);
     }

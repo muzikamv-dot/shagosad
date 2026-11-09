@@ -148,6 +148,17 @@ public class SettingsActivity extends Activity {
                                     "Файл не похож на копию ШагоСада", Toast.LENGTH_LONG).show();
                             return;
                         }
+                        // показываем, что именно легло из копии
+                        try {
+                            GameState check = GameState.load(SettingsActivity.this);
+                            Toast.makeText(SettingsActivity.this,
+                                    "Восстановлено: медалей " + check.unlocked.size()
+                                            + " · очков " + check.points
+                                            + " · леек " + check.water
+                                            + " · цветов " + check.flowersTotal,
+                                    Toast.LENGTH_LONG).show();
+                        } catch (Exception ignored) { }
+
                         // перезапуск: в памяти остались данные до восстановления
                         Intent i = new Intent(SettingsActivity.this, MainActivity.class);
                         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
@@ -564,6 +575,46 @@ public class SettingsActivity extends Activity {
             }
         });
         testBox.addView(addPoints);
+
+        // вода: чтобы проверять сад и рост редких цветов без недели ходьбы
+        Button addWater10 = row("Начислить 10 леек (тест)");
+        addWater10.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                game.water += 10;
+                game.save(SettingsActivity.this);
+                Toast.makeText(SettingsActivity.this,
+                        "Леек теперь: " + game.water, Toast.LENGTH_SHORT).show();
+            }
+        });
+        testBox.addView(addWater10);
+
+        Button addWater100 = row("Начислить 100 леек (тест)");
+        addWater100.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                game.water += 100;
+                game.save(SettingsActivity.this);
+                Toast.makeText(SettingsActivity.this,
+                        "Леек теперь: " + game.water, Toast.LENGTH_SHORT).show();
+            }
+        });
+        testBox.addView(addWater100);
+
+        // выдать конкретное редкое семечко: чтобы проверять очередь и не тратить очки
+        for (final int rareId : Rare.ALL) {
+            Button giveRare = row("Выдать семечко: " + Rare.name(rareId) + " (тест)");
+            giveRare.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    game.queueRare(rareId);
+                    game.save(SettingsActivity.this);
+                    String msg = game.rareQueuedCount() > 0
+                            ? "В очереди семечек: " + game.rareQueuedCount()
+                            : "Семечко посажено в саду";
+                    Toast.makeText(SettingsActivity.this, msg, Toast.LENGTH_SHORT).show();
+                }
+            });
+            testBox.addView(giveRare);
+        }
+
 
         // для проверки самого сброса: подтверждение словом СБРОС мешает
         // автоматическим прогонам и клавиатурам без кириллицы

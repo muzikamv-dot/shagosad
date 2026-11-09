@@ -59,7 +59,7 @@ public class MainActivity extends Activity {
     private ScrollView profilePage;
     private AvatarView avatar;
     private TextView nickView, rankView, profSub, profAch;
-    private TextView statP, statS, statW, statT;
+    private TextView statP, statS, statW, statT, statStepsStreak, statNormDays;
     private TextView dBest, dAvg, dTotal, dDays, dFlowers, dSpecies;
     private Button goalButton;
     private Button shopButton, herbButton, bagButton, achButton;
@@ -595,7 +595,8 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         FrameLayout ringBox = new FrameLayout(this);
-        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(dp(206), dp(206));
+        // кольцо крупнее: под ним умещаются и пяти-, и шестизначные шаги без мельчения
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(dp(250), dp(250));
         rlp.gravity = Gravity.CENTER_HORIZONTAL;
         rlp.topMargin = dp(6);
         page.addView(ringBox, rlp);
@@ -607,6 +608,8 @@ public class MainActivity extends Activity {
         LinearLayout numbers = new LinearLayout(this);
         numbers.setOrientation(LinearLayout.VERTICAL);
         numbers.setGravity(Gravity.CENTER);
+        // три строки внутри кольца чуть выше центра, иначе нижняя лежит на дуге
+        numbers.setTranslationY(-dp(7));
         FrameLayout.LayoutParams nlp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         nlp.gravity = Gravity.CENTER;
@@ -620,8 +623,15 @@ public class MainActivity extends Activity {
         stepsView.setTypeface(Typeface.create("sans-serif-thin", Typeface.NORMAL));
         stepsView.setGravity(Gravity.CENTER);
         stepsView.setTextAlignment(TextView.TEXT_ALIGNMENT_CENTER);
-        numbers.addView(stepsView, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // десятки тысяч шагов не должны вылезать за круг: размер подбирается сам,
+        // а боковые отступы держат текст внутри дуги
+        stepsView.setSingleLine(true);
+        // ширина ровно по внутреннему кругу: иначе пять цифр вылезают за дугу
+        stepsView.setAutoSizeTextTypeUniformWithConfiguration(18, 52, 1, TypedValue.COMPLEX_UNIT_SP);
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(
+                dp(150), ViewGroup.LayoutParams.WRAP_CONTENT);
+        sl.gravity = Gravity.CENTER_HORIZONTAL;
+        numbers.addView(stepsView, sl);
 
         goalView = new TextView(this);
         goalView.setText("из 10 000 шагов");
@@ -637,6 +647,8 @@ public class MainActivity extends Activity {
         subView = new TextView(this);
         subView.setTextColor(Theme.FAINT);
         subView.setTextSize(10.5f);
+        // строка может вырасти до «км · мин · ккал» — подбираем размер сами
+        subView.setSingleLine(false);
         subView.setGravity(Gravity.CENTER);
         subView.setTextAlignment(TextView.TEXT_ALIGNMENT_CENTER);
         LinearLayout.LayoutParams svlp = new LinearLayout.LayoutParams(
@@ -772,7 +784,7 @@ public class MainActivity extends Activity {
         LinearLayout col2 = new LinearLayout(this);
         col2.setOrientation(LinearLayout.VERTICAL);
         TextView l2 = new TextView(this);
-        l2.setText("СЕРИЯ");
+        l2.setText("ПОЛИВЫ ПОДРЯД");
         l2.setTextColor(Theme.FAINT);
         l2.setTextSize(Ui.T_CAPS);
         l2.setLetterSpacing(0.10f);
@@ -837,10 +849,18 @@ public class MainActivity extends Activity {
     private ValueAnimator stepsAnim;
 
     /** Цифры шагов «набегают» к новому значению, а не прыгают мгновенно. */
+    /** Размер цифр под число: до пяти знаков — 52 sp, дальше меньше. */
+    private void setStepsText(int value) {
+        String s = String.valueOf(value);
+        // максимум, что бывает, — 99 000 (пять знаков): он влезает в 52 sp
+        float sp = s.length() <= 5 ? 52f : 40f;
+        stepsView.setTextSize(sp);
+        stepsView.setText(s);
+    }
     private void animateSteps(final int target) {
         if (shownSteps < 0 || Math.abs(target - shownSteps) > 20000) {
             shownSteps = target;
-            stepsView.setText(String.valueOf(target));
+            setStepsText(target);
             return;
         }
         if (shownSteps == target) return;
@@ -851,7 +871,7 @@ public class MainActivity extends Activity {
         stepsAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override public void onAnimationUpdate(ValueAnimator a) {
                 shownSteps = (Integer) a.getAnimatedValue();
-                stepsView.setText(String.valueOf(shownSteps));
+                setStepsText(shownSteps);
             }
         });
         stepsAnim.start();
@@ -898,7 +918,11 @@ public class MainActivity extends Activity {
             boolean[] est = new boolean[1];
             int minutes = Steps.minutesShown(this, steps, est);
             String kmText = String.format(Locale.US, "%.1f", km).replace('.', ',');
-            subView.setText(kmText + " км · " + (est[0] ? "≈ " : "") + minutes + " мин");
+            String line = kmText + " км · " + (est[0] ? "≈ " : "") + Ui.duration(minutes);
+            if (Steps.showCalories(this)) {
+                line += "\n≈ " + fmt(Steps.calories(this, steps)) + " ккал";
+            }
+            subView.setText(line);
         }
 
         game.syncSteps(Steps.today(), steps);
@@ -979,7 +1003,7 @@ public class MainActivity extends Activity {
         if (!Steps.hasSensor(getApplicationContext())) pill("Нет счётчика шагов", 0xFFFFB49A, bg);
         else if (!sensorOk) pill("Нужно разрешение", 0xFFFFB49A, bg);
         else if (steps >= game.goal) pill("Цель достигнута", Theme.GOLD, bg);
-        else if (game.streak > 0) pill("Серия " + game.streak + " дн. · вода " + game.water, Theme.ACCENT_SOFT, bg);
+        else if (game.streak > 0) pill("Поливы " + game.streak + " дн. · вода " + game.water, Theme.ACCENT_SOFT, bg);
         else pill("Экономный режим", Theme.ACCENT_SOFT, bg);
     }
 
@@ -1847,7 +1871,7 @@ public class MainActivity extends Activity {
         pointsCount = new CountUp(statP, new CountUp.Fmt() {
             @Override public String at(int v) { return String.valueOf(v); }
         });
-        statS = statCard(row1, "СЕРИЯ", false);
+        statS = statCard(row1, "СЕРИЯ ПОЛИВОВ", false);
         root.addView(row1, r1p);
 
         LinearLayout row2 = new LinearLayout(this);
@@ -1858,6 +1882,16 @@ public class MainActivity extends Activity {
         statW = statCard(row2, "ПОЛИТО", true);
         statT = statCard(row2, "ШАГИ СЕГОДНЯ", false);
         root.addView(row2, r2p);
+
+        // серия шагов: дни подряд, когда набрана дневная норма
+        LinearLayout row3 = new LinearLayout(this);
+        row3.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams r3p = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        r3p.topMargin = dp(8);
+        statStepsStreak = statCard(row3, "СЕРИЯ АКТИВНОСТИ", true);
+        statNormDays = statCard(row3, "СЕРИЯ НОРМЫ", false);
+        root.addView(row3, r3p);
 
         LinearLayout details = new LinearLayout(this);
         details.setOrientation(LinearLayout.VERTICAL);
@@ -2159,6 +2193,11 @@ public class MainActivity extends Activity {
                 : "до звания «" + nextRank + "» " + fmt(toNext) + " очков");
         if (pointsCount != null) pointsCount.set(game.points);
         statS.setText(game.streak + " дн.");
+        int stepsStreak = Steps.activityStreak(this);
+        if (statStepsStreak != null) statStepsStreak.setText(stepsStreak + " дн.");
+        if (statNormDays != null) {
+            statNormDays.setText(Steps.stepsStreak(this, game.goal) + " дн.");
+        }
         statW.setText(String.valueOf(game.wateredTotal));
         statT.setText(String.valueOf(totalSteps()));
 

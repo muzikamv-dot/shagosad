@@ -15,6 +15,7 @@ import android.view.View;
 /** Сад: один крупный цветок, стадии роста и букет собранных видов. */
 public class GardenView extends View {
 
+
     public interface Listener { void onTap(); }
 
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -328,7 +329,7 @@ public class GardenView extends View {
 
     /** «в букете 13 цветов · в этом сезоне 13»: без потолка «из 365». */
     private String bouquetText() {
-        if (bouquetCards == game.cards.size() && bouquetMagic == game.magicReady
+        if (bouquetCards == game.cards.size() && bouquetMagic == (game.rareQueuedCount() != 0)
                 && bouquetCache.length() > 0) return bouquetCache;
         int now = 0;
         String key = Season.now();
@@ -336,12 +337,13 @@ public class GardenView extends View {
             if (c != null && c.species >= 0 && Season.key(c.date).equals(key)) now++;
         }
         // купленное волшебное семечко ждёт, пока дорастёт текущий цветок
-        String wait = game.magicReady && !game.growingMagic() ? "волшебное семечко ждёт · " : "";
+        String wait = game.rareQueuedCount() != 0 && !game.growingRare()
+                    ? "редких семечек в очереди: " + game.rareQueuedCount() + " · " : "";
         bouquetCache = wait + "в букете " + game.bloomed.size() + " "
                 + Ui.plural(game.bloomed.size(), "цветок", "цветка", "цветов")
                 + " · в этом сезоне " + now;
         bouquetCards = game.cards.size();
-        bouquetMagic = game.magicReady;
+        bouquetMagic = game.rareQueuedCount() != 0;
         return bouquetCache;
     }
 
@@ -446,12 +448,39 @@ public class GardenView extends View {
         }
         if (game.withered) {
             drawWithered(c, w / 2f, plantBottom, fsize, time, plantAlpha);
-        } else if (game.growingMagic()) {
-            // волшебная ромашка: готовые кадры стадий вместо параметрического цветка
-            float mh = fsize * 0.92f;
-            float mw = mh * Magic.aspect();
+        } else if (game.growingRare()) {
+            int rareSpecies = game.growingRareSpecies();
+            int rareStage = stage;
+            // редкий цветок: готовые кадры стадий вместо параметрического цветка
+            // каждая следующая стадия выше предыдущей, даже если нарисована почти такой же
+            // кадр растёт по стадиям: 58 % окна на семечке, 100 % у цветка.
+            // Компенсацию разной высоты растения включаем только со 3-й стадии
+            // и не больше +35 %, иначе семечко раздувается на пол-экрана.
+            // ступени заметно разные: разница между 9 и 10 видна глазом
+            float[] steps = {0.58f, 0.63f, 0.68f, 0.73f, 0.78f, 0.83f, 0.88f, 0.93f, 0.98f, 1.03f, 1.10f};
+            float frac = steps[Math.max(0, Math.min(10, rareStage))];
+            if (rareStage >= 3) {
+                float ratio = Rare.contentRatio(getContext(), rareSpecies, rareStage);
+                frac = Math.min(frac / Math.max(0.55f, ratio), frac * 1.35f);
+            }
+            float mh = fsize * frac;
+            float mw = mh * Rare.aspect();
             r.set(w / 2f - mw / 2f, plantBottom - mh, w / 2f + mw / 2f, plantBottom);
-            Magic.draw(c, getContext(), stage, r, plantAlpha);
+            if (rareStage >= 10) {
+                // последняя стадия: поросёнок «болтает» лапками — два кадра туда-обратно
+                android.graphics.Bitmap b = Rare.art(getContext(), rareSpecies, rareStage);
+                if (((int) (time * 2.4f) & 1) == 1) {
+                    android.graphics.Bitmap alt = Rare.artAlt(getContext(), rareSpecies);
+                    if (alt != null) b = alt;
+                }
+                if (b != null) {
+                    Paint rp = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+                    rp.setAlpha(plantAlpha);
+                    c.drawBitmap(b, null, r, rp);
+                }
+            } else {
+                Rare.draw(c, getContext(), rareSpecies, rareStage, r, plantAlpha);
+            }
         } else {
             // свет падает с той стороны, где сейчас солнце: лепестки с этой стороны
             // получают блик, противоположные уходят в тень
@@ -490,8 +519,8 @@ public class GardenView extends View {
         } else if (game.weeds > 0) {
             caption = "сорняков: " + game.weeds + " · нужна тяпка";
         } else {
-            String name = game.growingMagic()
-                    ? Magic.NAME
+            String name = game.growingRare()
+                    ? Rare.name(game.growingRareSpecies())
                     : Species.FORM[Species.shape(species) % Species.FORM.length];
             caption = name + " · " + STAGE_NAMES[Math.min(10, stage)];
         }
@@ -520,14 +549,55 @@ public class GardenView extends View {
             action = game.water > 0 ? "Полить" : "Нужна вода · пройди " + Ui.steps(game.stepCost());
             ready = game.water > 0;
         }
+        currentAction = action;
         float btnTop = cardTop + cardH + 16 * d;
         float btnBottom = btnTop + 52 * d;
         buttonRect.set(pad + 8 * d, btnTop, w - pad - 8 * d, btnBottom);
         p.setStyle(Paint.Style.FILL);
         p.setColor(ready ? Theme.ACCENT : Theme.ACTION_OFF);
         c.drawRoundRect(buttonRect, 26 * d, 26 * d, p);
-        centered(c, action, w / 2f, (btnTop + btnBottom) / 2f, 14,
+        String btnText = action;
+        if (holding && "Собрать букет".equals(action)) {
+            long left = Math.max(0, (HOLD_MS - (System.currentTimeMillis() - holdStart) + 999) / 1000);
+            btnText = "Держи… " + left + " с";
+        }
+        centered(c, btnText, w / 2f, (btnTop + btnBottom) / 2f, 14,
                 ready ? Theme.ON_ACCENT : Theme.MUTED, true);
+
+        // удержание «Собрать букет»: полоса бежит по краю кнопки
+        if (holding && "Собрать букет".equals(action)) {
+            float prog = Math.min(1f, (System.currentTimeMillis() - holdStart) / (float) HOLD_MS);
+            android.graphics.Path edge = new android.graphics.Path();
+            edge.addRoundRect(buttonRect, 26 * d, 26 * d, android.graphics.Path.Direction.CW);
+            android.graphics.PathMeasure pm = new android.graphics.PathMeasure(edge, false);
+            float len = pm.getLength();
+            if (prog > 0.001f) {
+                android.graphics.Path seg = new android.graphics.Path();
+                pm.getSegment(0, len * prog, seg, true);
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(3.5f * d);
+                p.setStrokeCap(Paint.Cap.ROUND);
+                p.setColor(Theme.GOLD);
+                p.setAlpha(255);
+                c.drawPath(seg, p);
+                float[] pos = new float[2];
+                pm.getPosTan(len * prog, pos, null);
+                p.setStyle(Paint.Style.FILL);
+                p.setColor(0xFFFFFFFF);
+                p.setAlpha(235);
+                c.drawCircle(pos[0], pos[1], 4.2f * d, p);
+                p.setAlpha(255);
+            }
+            if (prog >= 1f && !holdDone) {
+                holdDone = true;
+                holding = false;
+                post(new Runnable() {
+                    @Override public void run() {
+                        if (listener != null) listener.onTap();
+                    }
+                });
+            }
+        }
 
         // ---- счётчик букета ----
         // Раньше здесь была сетка из 12 плашек с точками: они выглядели нажимаемыми,
@@ -563,6 +633,13 @@ public class GardenView extends View {
     private float downX, downY;
     private boolean pressed;
 
+    // «Собрать букет» подтверждается удержанием: 3 секунды, по краю кнопки бежит полоса
+    private static final long HOLD_MS = 3000L;
+    private long holdStart = 0;
+    private boolean holding = false;
+    private boolean holdDone = false;
+    private String currentAction = "";
+
     @Override
     public boolean onTouchEvent(MotionEvent e) {
         float slop = 14 * d;
@@ -575,14 +652,38 @@ public class GardenView extends View {
                 boolean lower = downY >= card.top + card.height() - 8 * d
                         && downY <= buttonRect.bottom + 24 * d;
                 pressed = card.contains(downX, downY) || buttonRect.contains(downX, downY) || lower;
+                boolean collectZone = buttonRect.contains(downX, downY) || card.contains(downX, downY);
+                if (collectZone && "Собрать букет".equals(currentAction)) {
+                    // сбор букета требует удержания 3 секунды
+                    holding = true;
+                    holdDone = false;
+                    holdStart = System.currentTimeMillis();
+                    invalidate();
+                    return true;
+                }
                 return pressed;
             case MotionEvent.ACTION_MOVE:
+                if (holding) {
+                    if (Math.abs(e.getX() - downX) > slop || Math.abs(e.getY() - downY) > slop) {
+                        holding = false;      // увёл палец — сбор отменяется
+                        pressed = false;
+                        invalidate();
+                    }
+                    return true;
+                }
                 if (pressed
                         && (Math.abs(e.getX() - downX) > slop || Math.abs(e.getY() - downY) > slop)) {
                     pressed = false;   // это свайп или прокрутка, а не нажатие
                 }
                 return true;
             case MotionEvent.ACTION_UP:
+                if (holding || holdDone) {
+                    holding = false;
+                    pressed = false;
+                    holdDone = false;
+                    invalidate();
+                    return true;             // обычный тап по «Собрать букет» больше не собирает
+                }
                 boolean tap = pressed
                         && Math.abs(e.getX() - downX) <= slop
                         && Math.abs(e.getY() - downY) <= slop;
@@ -590,6 +691,8 @@ public class GardenView extends View {
                 if (tap && listener != null) listener.onTap();
                 return true;
             case MotionEvent.ACTION_CANCEL:
+                holding = false;
+                holdDone = false;
                 pressed = false;       // родитель перехватил жест под свайп
                 return true;
         }
