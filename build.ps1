@@ -15,14 +15,14 @@ param(
 # Реальные сбои ловит Check() по $LASTEXITCODE после каждого шага.
 $ErrorActionPreference = 'Continue'
 
-$root = 'C:\Godot\stepbuild'
-$env:JAVA_HOME = 'C:\Godot\_env\jdk-17.0.20.1+1'
+$root = 'C:\Godot\SHAGOSAD-RAZRABOTKA\stepbuild'
+$env:JAVA_HOME = 'C:\Godot\SHAGOSAD-RAZRABOTKA\_env\jdk-17.0.20.1+1'
 $env:Path = "$env:JAVA_HOME\bin;$env:Path"
-$bt   = 'C:\Godot\_env\android-sdk\build-tools\36.1.0'
-$adb  = 'C:\Godot\_env\android-sdk\platform-tools\adb.exe'
+$bt   = 'C:\Godot\SHAGOSAD-RAZRABOTKA\_env\android-sdk\build-tools\36.1.0'
+$adb  = 'C:\Godot\SHAGOSAD-RAZRABOTKA\_env\android-sdk\platform-tools\adb.exe'
 $jar  = Join-Path $root 'sdk\android-35\android.jar'
 $app  = Join-Path $root 'stepapp'
-$ks   = 'C:\Godot\_from_phone\keys\stepkey.keystore'
+$ks   = 'C:\Godot\SHAGOSAD-RAZRABOTKA\_from_phone\keys\stepkey.keystore'
 # Пароль ключа подписи в скрипте не хранится: он берётся из переменной STEP_KS_PASS
 # или из secrets.local.ps1 (этот файл в репозиторий не попадает).
 $ksPass = $env:STEP_KS_PASS
