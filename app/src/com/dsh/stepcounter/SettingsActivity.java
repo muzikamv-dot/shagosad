@@ -160,6 +160,9 @@ public class SettingsActivity extends Activity {
     }
 
     private Button goalButton;
+    private Button heightButton;
+    private Button weightButton;
+    private Button caloriesButton;
     private Button themeButton;
     private Button serviceButton;
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -274,6 +277,25 @@ public class SettingsActivity extends Activity {
             @Override public void onClick(View v) { editGoal(); }
         });
         box.addView(goalButton);
+
+        // рост нужен только для расстояния и не влияет на игру
+        heightButton = row("Рост для длины шага: " + Steps.prefs(this).getInt("height_cm", 170) + " см");
+        heightButton.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { editHeight(); }
+        });
+        box.addView(heightButton);
+
+        weightButton = row("Вес для калорий: " + Steps.weightKg(this) + " кг");
+        weightButton.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { editWeight(); }
+        });
+        box.addView(weightButton);
+
+        caloriesButton = row(Steps.showCalories(this) ? "Калории: показывать" : "Калории: скрыты");
+        caloriesButton.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { toggleCalories(); }
+        });
+        box.addView(caloriesButton);
 
         themeButton = row("Тема: " + Theme.name());
         themeButton.setOnClickListener(new View.OnClickListener() {
@@ -645,6 +667,77 @@ public class SettingsActivity extends Activity {
                             getSharedPreferences(Steps.PREFS, MODE_PRIVATE)
                                     .edit().putInt("goal", g).apply();
                             goalButton.setText("Норма шагов в день: " + g);
+                        } catch (Exception ignored) { }
+                    }
+                })
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
+    private void editWeight() {
+        final EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_NUMBER);
+        input.setText(String.valueOf(Steps.weightKg(this)));
+        input.setTextColor(Theme.TEXT);
+
+        new AlertDialog.Builder(this)
+                .setTitle("Вес, кг (для калорий)")
+                .setView(input)
+                .setPositiveButton("Сохранить", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        try {
+                            int kg = Integer.parseInt(input.getText().toString().trim());
+                            if (kg < 30 || kg > 200) return;
+                            Steps.prefs(SettingsActivity.this).edit()
+                                    .putInt("weight_kg", kg).apply();
+                            weightButton.setText("Вес для калорий: " + kg + " кг");
+                        } catch (Exception ignored) { }
+                    }
+                })
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
+    private void toggleCalories() {
+        boolean on = Steps.showCalories(this);
+        if (!on) {
+            // включаем только через честное предупреждение
+            new AlertDialog.Builder(this)
+                    .setTitle("Калории — это оценка")
+                    .setMessage("Расход считается по весу и шагам, без темпа, рельефа и возраста.\n\n"
+                            + "Ошибка бывает заметной: считать калории точными нельзя. "
+                            + "В приложении такие цифры всегда будут с «≈».\n\nВключить?")
+                    .setPositiveButton("Включить", new DialogInterface.OnClickListener() {
+                        @Override public void onClick(DialogInterface d, int w) {
+                            Steps.prefs(SettingsActivity.this).edit()
+                                    .putBoolean("show_calories", true).apply();
+                            caloriesButton.setText("Калории: показывать");
+                        }
+                    })
+                    .setNegativeButton("Не надо", null)
+                    .show();
+        } else {
+            Steps.prefs(this).edit().putBoolean("show_calories", false).apply();
+            caloriesButton.setText("Калории: скрыты");
+        }
+    }
+    private void editHeight() {
+        final EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_NUMBER);
+        input.setText(String.valueOf(Steps.prefs(this).getInt("height_cm", 170)));
+        input.setTextColor(Theme.TEXT);
+
+        new AlertDialog.Builder(this)
+                .setTitle("Рост, см (для расстояния)")
+                .setView(input)
+                .setPositiveButton("Сохранить", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        try {
+                            int h = Integer.parseInt(input.getText().toString().trim());
+                            if (h < 120 || h > 220) return;
+                            Steps.prefs(SettingsActivity.this).edit()
+                                    .putInt("height_cm", h).apply();
+                            heightButton.setText("Рост для длины шага: " + h + " см");
                         } catch (Exception ignored) { }
                     }
                 })

@@ -41,7 +41,8 @@ final class Steps {
     static final String KEY_LAST_ELAPSED = "last_elapsed";
 
     static final int GOAL = 10000;
-    static final int KEEP_DAYS = 21;
+    /** Сколько дней журнала храним: нужен запас на графики и теплокарту за 3 месяца. */
+    static final int KEEP_DAYS = 95;
     /** Последняя дата, которую видело приложение (для защиты от скачков часов). */
     static final String KEY_LAST_DAY = "last_day";
     /** Текст последнего замеченного скачка времени. */
@@ -382,9 +383,99 @@ final class Steps {
         return c.getTimeInMillis();
     }
 
+    /**
+     * Шаги за последние n дней: массив от самого старого дня к сегодняшнему.
+     * Нужен и для графика на главном, и для теплокарты в статистике.
+     */
+    static int[] lastDays(Context ctx, int n) {
+        if (n < 1) n = 1;
+        LinkedHashMap<String, Integer> days = mergedDays(ctx);
+        int[] out = new int[n];
+        java.text.SimpleDateFormat fmt = new java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US);
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 12);
+        cal.add(java.util.Calendar.DAY_OF_YEAR, -(n - 1));
+        for (int i = 0; i < n; i++) {
+            String key = fmt.format(cal.getTime());
+            Integer v = days.get(key);
+            out[i] = v == null ? 0 : v;
+            cal.add(java.util.Calendar.DAY_OF_YEAR, 1);
+        }
+        return out;
+    }
+
+    /**
+     * Активные минуты за сегодня — по интервалам журнала, а не «шаги ÷ 100».
+     * Минута считается, если за неё прошли хотя бы 15 шагов, а разрыв между
+     * замерами не больше 10 минут (иначе телефон просто лежал).
+     */
+    static int activeMinutes(Context ctx) {
+        List<long[]> list = load(ctx);
+        if (list.size() < 2) return 0;
+        String today = today();
+        long total = 0;
+        for (int i = 1; i < list.size(); i++) {
+            long[] a = list.get(i - 1);
+            long[] b = list.get(i);
+            long dt = b[0] - a[0];
+            if (dt <= 0 || dt > 10 * 60000L) continue;
+            String dayB = b.length >= 5 ? keyToDay(b[3]) : null;
+            if (dayB == null) dayB = dayOf(b[0]);
+            if (!dayB.equals(today)) continue;
+            long delta = b[2] - a[2];
+            if (delta < 0) delta = b[2];
+            if (delta >= 15) total += dt;
+        }
+        long minutes = Math.round(total / 60000.0);
+        return (int) Math.max(0, Math.min(24 * 60, minutes));
+    }
+
+    /** Длина шага в метрах: из роста (см), по умолчанию 170 см. */
+    static double strideMeters(Context ctx) {
+        int height = prefs(ctx).getInt("height_cm", 170);
+        if (height < 120 || height > 220) height = 170;
+        // 0,42 — тот же коэффициент, что у системного «Здоровья» Honor:
+        // так наши километры не спорят с телефоном (разница 1,2 %)
+        return height * 0.42 / 100.0;
+    }
+
+    /**
+     * Минуты в движении для показа: из журнала, а если журнал редкий (приложение
+     * не открывали) — грубая оценка по шагам, чтобы не показывать «0 мин» при
+     * 6 000 пройденных шагов.
+     * Возвращает минуты, а признак оценки — в estimated[0].
+     */
+    static int minutesShown(Context ctx, int steps, boolean[] estimated) {
+        int real = activeMinutes(ctx);
+        if (estimated != null) estimated[0] = false;
+        if (real > 0) return real;
+        if (steps < 100) return 0;
+        if (estimated != null) estimated[0] = true;
+        return Math.max(1, steps / 100);
+    }
+
+    /** Вес для оценки калорий, кг (по умолчанию 70). */
+    static int weightKg(Context ctx) {
+        int w = prefs(ctx).getInt("weight_kg", 70);
+        if (w < 30 || w > 200) w = 70;
+        return w;
+    }
+
+    /** Показывать ли калории: по умолчанию выключено — это оценка, а не факт. */
+    static boolean showCalories(Context ctx) {
+        return prefs(ctx).getBoolean("show_calories", false);
+    }
+
+    /**
+     * Примерный расход калорий: ~0,045 ккал на шаг при 70 кг, дальше по весу.
+     * Формула грубая: не учитывает темп, рельеф, возраст — поэтому в приложении
+     * всегда пишем «≈» и предупреждаем, что это оценка.
+     */
+    static int calories(Context ctx, int steps) {
+        return Math.round(steps * 0.045f * weightKg(ctx) / 70f);
+    }
     /** Пересчитать кэш «шаги сегодня» — его читают виджет и уведомление. */
-    static int refreshToday(Context ctx) {
-        // при смене суток закрепляем итоги прошлых дней в настройках.
+    static int refreshToday(Context ctx) {        // при смене суток закрепляем итоги прошлых дней в настройках.
         // Отдельный ключ: last_day обновляется ещё и при сохранении журнала.
         String histDay = prefs(ctx).getString(KEY_HIST_DAY, "");
         if (!histDay.equals(today())) {

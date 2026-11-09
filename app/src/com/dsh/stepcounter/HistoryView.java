@@ -19,18 +19,22 @@ public class HistoryView extends View {
     private final Paint label = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint value = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint goalLine = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint normLabel = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
 
     private int[] values = new int[0];
     private String[] labels = new String[0];
     private int goal = 10000;
     private float density;
+    /** Показывать ли цифры над столбиками: при 30 и 90 днях они нечитаемы. */
+    private boolean showValues = true;
 
     public HistoryView(Context ctx) {
         super(ctx);
         density = getResources().getDisplayMetrics().density;
 
         barEmpty.setColor(Theme.SURFACE_HI);
+        barEmpty.setAlpha(140);
 
         label.setColor(Theme.FAINT);
         label.setTextSize(10f * density);
@@ -43,12 +47,21 @@ public class HistoryView extends View {
 
         goalLine.setColor(Theme.STROKE);
         goalLine.setStrokeWidth(1f * density);
+
+        normLabel.setTextSize(9f * density);
+        normLabel.setTextAlign(Paint.Align.LEFT);
     }
 
     public void setData(int[] values, String[] labels, int goal) {
         this.values = values == null ? new int[0] : values;
         this.labels = labels == null ? new String[0] : labels;
         this.goal = Math.max(1, goal);
+        invalidate();
+    }
+
+    /** Цифры над столбиками: включаем только на недельном графике. */
+    public void setShowValues(boolean on) {
+        this.showValues = on;
         invalidate();
     }
 
@@ -63,10 +76,11 @@ public class HistoryView extends View {
         float slot = w / values.length;
         float barW = Math.min(slot * 0.5f, 22f * density);
 
-        // масштаб по максимуму, но не мельче 1000 шагов — иначе столбики не видны
+        // масштаб по максимуму, но не мельче нормы: иначе пунктир нормы не влезает,
+        // а столбики упираются в верх без запаса
         int maxValue = 0;
         for (int v : values) maxValue = Math.max(maxValue, v);
-        float scaleMax = Math.max(1000f, maxValue * 1.15f);
+        float scaleMax = Math.max(1000f, Math.max(maxValue, goal) * 1.12f);
         float scale = chartH / scaleMax;
 
         for (int i = 0; i < values.length; i++) {
@@ -74,7 +88,8 @@ public class HistoryView extends View {
             boolean today = i == values.length - 1;
 
             if (values[i] <= 0) {
-                rect.set(cx - barW / 2f, chartH - 3f * density, cx + barW / 2f, chartH);
+                float dotW = Math.min(4f * density, barW);
+                rect.set(cx - dotW / 2f, chartH - 3.5f * density, cx + dotW / 2f, chartH);
                 c.drawRoundRect(rect, barW / 2f, barW / 2f, barEmpty);
             } else {
                 float bh = Math.max(4f * density, values[i] * scale);
@@ -95,7 +110,9 @@ public class HistoryView extends View {
                 boolean inside = false;
                 if (labelY < 12f * density) { labelY = top + 14f * density; inside = true; }
                 value.setColor(inside ? Theme.ON_ACCENT : Theme.ACCENT_SOFT);
-                c.drawText(shortValue(values[i]), cx, labelY, value);
+                // на 30 и 90 днях столбики узкие: цифры налезают друг на друга и
+                // обрезаются краем. Там их нет — сегодняшние шаги и так в кольце выше
+                if (showValues) c.drawText(shortValue(values[i]), cx, labelY, value);
             }
 
             if (i < labels.length) {
@@ -113,6 +130,10 @@ public class HistoryView extends View {
                         new float[]{5f * density, 5f * density}, 0f));
                 c.drawLine(0, gy, w, gy, goalLine);
                 goalLine.setPathEffect(null);
+                // подпись у правого края: сразу видно, что это норма, а не средняя
+                normLabel.setColor(Theme.STROKE);
+                c.drawText("норма " + shortValue(goal), 2f * density, gy - 4f * density,
+                        normLabel);
             }
         }
     }

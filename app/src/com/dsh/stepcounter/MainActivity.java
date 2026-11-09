@@ -80,6 +80,11 @@ public class MainActivity extends Activity {
 
     private TextView stepsView;
     private TextView goalView;
+    /** Строка «≈ 5,0 км · 62 мин» внутри кольца. */
+    private TextView subView;
+    /** Диапазон графика: 7, 30 или 90 дней. */
+    private int histRange = 7;
+    private final java.util.ArrayList<TextView> rangeTabs = new java.util.ArrayList<>();
     private TextView pill;
     private TextView diagView;
     private RingView ring;
@@ -627,6 +632,18 @@ public class MainActivity extends Activity {
         numbers.addView(goalView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        // расстояние и время в движении — одной мелкой строкой внутри кольца:
+        // тем, кто пришёл за шагомером, это нужно сразу, а места почти не занимает
+        subView = new TextView(this);
+        subView.setTextColor(Theme.FAINT);
+        subView.setTextSize(10.5f);
+        subView.setGravity(Gravity.CENTER);
+        subView.setTextAlignment(TextView.TEXT_ALIGNMENT_CENTER);
+        LinearLayout.LayoutParams svlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        svlp.topMargin = dp(2);
+        numbers.addView(subView, svlp);
+
         pill = new TextView(this);
         pill.setTextSize(12.5f);
         pill.setTypeface(Ui.medium());
@@ -639,19 +656,58 @@ public class MainActivity extends Activity {
         plp.topMargin = dp(10);
         page.addView(pill, plp);
 
+        // график: заголовок слева, переключатель диапазона справа
+        LinearLayout chartHead = new LinearLayout(this);
+        chartHead.setOrientation(LinearLayout.HORIZONTAL);
+        chartHead.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams chl = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        chl.topMargin = dp(12);
+        page.addView(chartHead, chl);
+
         TextView weekTitle = new TextView(this);
-        weekTitle.setText("7 ДНЕЙ");
+        weekTitle.setText("ГРАФИК");
         weekTitle.setTextColor(Theme.FAINT);
         weekTitle.setTextSize(Ui.T_CAPS);
         weekTitle.setLetterSpacing(0.10f);
-        LinearLayout.LayoutParams wtl = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        wtl.topMargin = dp(12);
-        page.addView(weekTitle, wtl);
+        chartHead.addView(weekTitle, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        final int[] ranges = {7, 30, 90};
+        final String[] rangeNames = {"7 дней", "30 дней", "90 дней"};
+        rangeTabs.clear();
+        for (int i = 0; i < ranges.length; i++) {
+            final int days = ranges[i];
+            TextView tab = new TextView(this);
+            tab.setText(rangeNames[i]);
+            tab.setTextSize(11);
+            tab.setTypeface(Ui.medium());
+            tab.setGravity(Gravity.CENTER);
+            tab.setPadding(dp(9), dp(3), dp(9), dp(3));
+            GradientDrawable tbg = new GradientDrawable();
+            tbg.setCornerRadius(dp(9));
+            tbg.setColor(Theme.SURFACE_HI);
+            tab.setBackground(tbg);
+            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (i > 0) tlp.leftMargin = dp(6);
+            tab.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    if (histRange == days) return;
+                    histRange = days;
+                    styleRangeTabs();
+                    updateHistory(totalSteps());
+                }
+            });
+            chartHead.addView(tab, tlp);
+            rangeTabs.add(tab);
+        }
+        histRange = 7;
+        styleRangeTabs();
 
         history = new HistoryView(this);
         LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(88));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(118));
         hlp.topMargin = dp(6);
         page.addView(history, hlp);
 
@@ -837,6 +893,14 @@ public class MainActivity extends Activity {
                 : String.valueOf((int) Math.min(100, pctRaw));
         goalView.setText("из " + fmt(game.goal) + " · " + pctText + "%");
 
+        if (subView != null) {
+            double km = steps * Steps.strideMeters(this) / 1000.0;
+            boolean[] est = new boolean[1];
+            int minutes = Steps.minutesShown(this, steps, est);
+            String kmText = String.format(Locale.US, "%.1f", km).replace('.', ',');
+            subView.setText(kmText + " км · " + (est[0] ? "≈ " : "") + minutes + " мин");
+        }
+
         game.syncSteps(Steps.today(), steps);
         game.save(this);
 
@@ -860,31 +924,49 @@ public class MainActivity extends Activity {
     private boolean cardFlowActive;
     private String pendingAch;
 
+    /** Подсветить выбранный диапазон графика. */
+    private void styleRangeTabs() {
+        int i = 0;
+        for (TextView t : rangeTabs) {
+            int days = i == 0 ? 7 : (i == 1 ? 30 : 90);
+            boolean on = days == histRange;
+            t.setTextColor(on ? Theme.BG_TOP : Theme.MUTED);
+            GradientDrawable bg = new GradientDrawable();
+            bg.setCornerRadius(dp(9));
+            bg.setColor(on ? Theme.ACCENT : Theme.SURFACE_HI);
+            t.setBackground(bg);
+            i++;
+        }
+    }
+
     private void updateHistory(int steps) {
-        // график: сохранённые дневные итоги + журнал (журнал главнее)
-        java.util.LinkedHashMap<String, Integer> days = Steps.mergedDays(this);
-        String today = Steps.today();
-        days.put(today, Math.max(steps, days.containsKey(today) ? days.get(today) : 0));
+        int n = histRange;
+        int[] v = Steps.lastDays(this, n);
+        if (v.length == 0) return;
+        // сегодня уточняем текущим значением: кэш может быть свежее журнала
+        v[v.length - 1] = Math.max(v[v.length - 1], steps);
 
-        int[] v = new int[7];
-        String[] l = new String[7];
-        int sum = 0;
-
-        // идём календарём назад — без арифметики по эпохе (иначе съезжает часовой пояс)
+        String[] l = new String[n];
         java.text.SimpleDateFormat fmt = new java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US);
         java.util.Calendar cal = java.util.Calendar.getInstance();
         cal.set(java.util.Calendar.HOUR_OF_DAY, 12);
-        cal.add(java.util.Calendar.DAY_OF_YEAR, -6);
+        cal.add(java.util.Calendar.DAY_OF_YEAR, -(n - 1));
 
-        for (int i = 0; i < 7; i++) {
+        int sum = 0;
+        for (int i = 0; i < n; i++) {
             String key = fmt.format(cal.getTime());
-            Integer val = days.get(key);
-            v[i] = val == null ? 0 : val;
-            l[i] = key.substring(8, 10);
+            if (n <= 7) {
+                l[i] = key.substring(8, 10);                 // дни недели: 03 04 05 …
+            } else if (n == 30 && i % 5 == 4) {
+                l[i] = key.substring(8, 10);                 // каждый пятый день месяца
+            } else {
+                l[i] = "";
+            }
             sum += v[i];
             cal.add(java.util.Calendar.DAY_OF_YEAR, 1);
         }
 
+        history.setShowValues(n <= 7);   // цифры читаются только на недельном графике
         history.setData(v, l, game.goal);
         history.setVisibility(View.VISIBLE);
         historyHint.setVisibility(sum == 0 ? View.VISIBLE : View.GONE);
@@ -1709,6 +1791,21 @@ public class MainActivity extends Activity {
         });
         actions2.addView(achButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
         root.addView(actions2, ap2);
+
+        // Статистика шагов — отдельным экраном, чтобы главная вкладка осталась лёгкой
+        LinearLayout actions3 = new LinearLayout(this);
+        actions3.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams ap3 = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        ap3.topMargin = dp(10);
+        Button statBtn = outlined("Статистика шагов");
+        statBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, StatsActivity.class));
+            }
+        });
+        actions3.addView(statBtn, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        root.addView(actions3, ap3);
 
         // Медали в профиле не показываем: они живут в отдельном экране
         // «Достижения» (кнопка в ряду выше).
