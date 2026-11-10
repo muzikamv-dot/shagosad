@@ -16,7 +16,6 @@ public class MidnightReceiver extends BroadcastReceiver {
                     SensorSync.sync(app);
                 } catch (Exception ignored) { }
                 AlarmScheduler.schedule(app);
-                StepWidget.refresh(app);
             }
         }).start();
     }

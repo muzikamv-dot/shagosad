@@ -49,6 +49,8 @@ import java.util.Locale;
 
 public class MainActivity extends Activity {
 
+
+
     private static final int REQ_PERMS = 100;
 
     private TextView headerTitle;
@@ -158,7 +160,6 @@ public class MainActivity extends Activity {
         }
         AlarmScheduler.schedule(this);
         SyncJobService.schedule(this);   // замер шагов в фоне: точная разбивка по дням
-        AlarmScheduler.cancelLegacyWidgetTick(this);
         AlarmScheduler.scheduleSync(this);   // и будильник: он пробивается через сон
         askFirstRunPermissions();
         // погода для сцены: один запрос на запуск приложения, дальше живёт кэш
@@ -169,7 +170,8 @@ public class MainActivity extends Activity {
             startActivity(new Intent(this, OnboardingActivity.class));
         }
         showTab(0);
-    }
+    
+}
 
     @Override
     protected void onResume() {
@@ -2413,7 +2415,6 @@ public class MainActivity extends Activity {
                         syncing = false;
                         lastSyncAt = System.currentTimeMillis();
                         updateSyncLine();
-                        StepWidget.refresh(self);
                         refreshAll();
                     }
                 });

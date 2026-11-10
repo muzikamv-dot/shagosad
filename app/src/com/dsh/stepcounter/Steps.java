@@ -437,6 +437,94 @@ final class Steps {
     }
 
     /**
+     * Шаги по часам за конкретный день: массив из 24 чисел.
+     *
+     * Журнал хранит замеры примерно раз в 15 минут, поэтому прирост между двумя
+     * замерами раскладываем по часам пропорционально времени — получается честная
+     * картина «когда ходил».
+     */
+    static int[] hourly(Context ctx, int year, int month0, int day) {
+        int[] out = new int[24];
+        List<long[]> list = load(ctx);
+        if (list.size() < 2) return out;
+
+        String target = String.format(Locale.US, "%04d-%02d-%02d", year, month0 + 1, day);
+        Calendar cal = Calendar.getInstance();
+        for (int i = 1; i < list.size(); i++) {
+            long[] a = list.get(i - 1);
+            long[] b = list.get(i);
+            long ta = a[0], tb = b[0];
+            if (tb <= ta) continue;
+
+            String dayB = keyToDay(b[3]);
+            if (dayB == null) dayB = dayOf(tb);
+            if (!target.equals(dayB)) continue;
+
+            long delta = b[2] - a[2];
+            if (delta < 0) delta = b[2];          // счётчик сбросился (перезагрузка)
+            if (delta <= 0) continue;
+
+            long span = tb - ta;
+            if (span > 8 * 3600_000L) {
+                // телефон лежал слишком долго — весь прирост отдаём часу замера
+                cal.setTimeInMillis(tb);
+                out[cal.get(Calendar.HOUR_OF_DAY)] += (int) delta;
+                continue;
+            }
+
+            // раскладываем прирост по часам, которые накрывает промежуток
+            long from = ta;
+            while (from < tb) {
+                cal.setTimeInMillis(from);
+                int hour = cal.get(Calendar.HOUR_OF_DAY);
+                long hourEnd = from + (3600_000L - (from % 3600_000L));
+                long segEnd = Math.min(tb, hourEnd);
+                double part = (segEnd - from) / (double) span;
+                out[hour] += (int) Math.round(delta * part);
+                from = segEnd;
+            }
+        }
+        return out;
+    }
+
+    /** Шаги и минуты в движении за конкретный день. */
+    static int[] dayStats(Context ctx, int year, int month0, int day) {
+        String target = String.format(Locale.US, "%04d-%02d-%02d", year, month0 + 1, day);
+        List<long[]> list = load(ctx);
+        double minutes = 0;
+        for (int i = 1; i < list.size(); i++) {
+            long[] a = list.get(i - 1);
+            long[] b = list.get(i);
+            long dt = b[0] - a[0];
+            if (dt <= 0) continue;
+            double gapMin = dt / 60000.0;
+            if (gapMin > 180) continue;
+            String dayB = keyToDay(b[3]);
+            if (dayB == null) dayB = dayOf(b[0]);
+            if (!target.equals(dayB)) continue;
+            long delta = b[2] - a[2];
+            if (delta < 0) delta = b[2];
+            if (delta < 15) continue;
+            minutes += Math.min(delta / 100.0, gapMin);
+        }
+        int steps = 0;
+        java.util.Map<String, Integer> all = mergedDays(ctx);
+        Integer v = all.get(String.format(Locale.US, "%04d-%02d-%02d",
+                year, month0 + 1, day));
+        if (v != null) steps = v;
+        return new int[]{steps, (int) Math.round(minutes)};
+    }
+
+    /** Часы, когда был пик шагов: индекс 0–23 и значение. */
+    static int[] peakHour(int[] hours) {
+        int best = 0, at = -1;
+        for (int i = 0; i < hours.length; i++) {
+            if (hours[i] > best) { best = hours[i]; at = i; }
+        }
+        return new int[]{at, best};
+    }
+
+    /**
      * Серия активности: дни подряд, когда были хоть какие-то шаги.
      * Сегодняшний день считается, только если шаги уже есть.
      */

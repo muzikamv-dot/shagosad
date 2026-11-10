@@ -37,6 +37,26 @@ public class StepService extends Service implements SensorEventListener {
     private SharedPreferences prefs;
     private NotificationManager notificationManager;
 
+    // Включение экрана и разблокировку нельзя ловить из манифеста:
+    // ACTION_SCREEN_ON система отдаёт только зарегистрированным на ходу.
+    // Служба уже живёт в фоне, поэтому регистрируем приёмник здесь.
+    private static final long WAKE_GAP_MS = 15 * 1000L;
+    private long lastWakeSyncAt = 0L;
+    private boolean screenReceiverOn = false;
+
+    private final android.content.BroadcastReceiver screenOn = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (intent == null) return;
+            String a = intent.getAction();
+            if (!Intent.ACTION_SCREEN_ON.equals(a)
+                    && !Intent.ACTION_USER_PRESENT.equals(a)) return;
+            long now = System.currentTimeMillis();
+            if (now - lastWakeSyncAt < WAKE_GAP_MS) return;   // не чаще раза в 15 секунд
+            lastWakeSyncAt = now;
+            SyncReceiver.runOnce(getApplicationContext());
+        }
+    };
+
     private long lastNotifyAt = 0L;
     private long lastSaveAt = 0L;
     private int lastNotifiedSteps = -1;
@@ -54,6 +74,15 @@ public class StepService extends Service implements SensorEventListener {
 
         startInForeground(buildNotification(currentSteps()));
         Steps.isServiceRunning = true;
+
+        try {
+            android.content.IntentFilter f = new android.content.IntentFilter();
+            f.addAction(Intent.ACTION_SCREEN_ON);
+            f.addAction(Intent.ACTION_USER_PRESENT);
+            registerReceiver(screenOn, f);
+            screenReceiverOn = true;
+        } catch (Exception ignored) { }
+
 
         if (stepCounter != null) {
             sensorManager.registerListener(this, stepCounter, SensorManager.SENSOR_DELAY_NORMAL);
@@ -74,6 +103,11 @@ public class StepService extends Service implements SensorEventListener {
 
     @Override
     public void onDestroy() {
+        if (screenReceiverOn) {
+            try { unregisterReceiver(screenOn); } catch (Exception ignored) { }
+            screenReceiverOn = false;
+        }
+
         Steps.isServiceRunning = false;
         if (sensorManager != null) sensorManager.unregisterListener(this);
         super.onDestroy();
@@ -107,7 +141,6 @@ public class StepService extends Service implements SensorEventListener {
             lastNotifyAt = now;
             lastNotifiedSteps = steps;
             notificationManager.notify(NOTIFICATION_ID, buildNotification(steps));
-            StepWidget.refresh(this);
         }
     }
 

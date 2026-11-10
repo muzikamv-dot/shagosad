@@ -27,6 +27,13 @@ public class StatsActivity extends Activity {
 
     private GameState game;
 
+    // выезжающая панель статистики за день
+    private android.widget.FrameLayout host;
+    private android.view.View dayPanel;
+    private android.view.View dayScrim;
+    private android.widget.TextView dayTitle, daySteps, dayKm, dayTime, dayKcal, dayHint;
+    private DayHoursView dayChart;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         Theme.load(this);
@@ -178,7 +185,185 @@ public class StatsActivity extends Activity {
         // ---------- календарь месяца ----------
         col.addView(section("КАЛЕНДАРЬ"));
         col.addView(calendarBlock());
-        return root;
+
+        // панель за день живёт поверх содержимого и выезжает сверху
+        host = new android.widget.FrameLayout(this);
+        host.addView(root, new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        buildDayPanel();
+        return host;
+    }
+
+
+    /** Панель «статистика за день»: карточка с цифрами и графиком по часам. */
+    private void buildDayPanel() {
+        // затемнение: тап по нему закрывает панель
+        dayScrim = new android.view.View(this);
+        dayScrim.setBackgroundColor(0x99000000);
+        dayScrim.setVisibility(android.view.View.GONE);
+        dayScrim.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) { hideDayPanel(); }
+        });
+        host.addView(dayScrim, new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{Theme.SURFACE_HI, Theme.BG_BOTTOM});
+        float r = dp(22);
+        bg.setCornerRadii(new float[]{0, 0, 0, 0, r, r, r, r});
+        bg.setStroke(dp(1), Theme.STROKE);
+        panel.setBackground(bg);
+        // отступ сверху с учётом строки состояния: иначе дата прячется под часами
+        int statusH = 0;
+        try {
+            int id = getResources().getIdentifier("status_bar_height", "dimen", "android");
+            if (id > 0) statusH = getResources().getDimensionPixelSize(id);
+        } catch (Exception ignored) { }
+        panel.setPadding(dp(16), dp(14) + statusH, dp(16), dp(18));
+
+        // шапка: дата и крестик
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        dayTitle = new android.widget.TextView(this);
+        dayTitle.setTextColor(Theme.TEXT);
+        dayTitle.setTextSize(15);
+        dayTitle.setTypeface(Ui.medium());
+        head.addView(dayTitle, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        android.widget.TextView close = new android.widget.TextView(this);
+        close.setText("закрыть");
+        close.setTextColor(Theme.ACCENT_SOFT);
+        close.setTextSize(12);
+        close.setPadding(dp(10), dp(4), dp(2), dp(4));
+        close.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) { hideDayPanel(); }
+        });
+        head.addView(close);
+        panel.addView(head);
+
+        // цифры за день
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rp.topMargin = dp(10);
+        panel.addView(row, rp);
+
+        daySteps = dayCell(row, "шаги");
+        dayKm = dayCell(row, "км");
+        dayTime = dayCell(row, "в движении");
+        dayKcal = dayCell(row, "ккал");
+
+        dayChart = new DayHoursView(this);
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(120));
+        cp.topMargin = dp(12);
+        panel.addView(dayChart, cp);
+
+        dayHint = new android.widget.TextView(this);
+        dayHint.setTextColor(Theme.FAINT);
+        dayHint.setTextSize(10.5f);
+        LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hp.topMargin = dp(6);
+        panel.addView(dayHint, hp);
+
+        dayPanel = panel;
+        dayPanel.setVisibility(android.view.View.GONE);
+        android.widget.FrameLayout.LayoutParams pp = new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        pp.gravity = Gravity.TOP;
+        host.addView(dayPanel, pp);
+    }
+
+    /** Маленькая ячейка «число + подпись». */
+    private android.widget.TextView dayCell(LinearLayout parent, String caption) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER_HORIZONTAL);
+        parent.addView(box, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        android.widget.TextView value = new android.widget.TextView(this);
+        value.setTextColor(Theme.TEXT);
+        value.setTextSize(15);
+        value.setTypeface(Ui.light());
+        value.setGravity(Gravity.CENTER_HORIZONTAL);
+        box.addView(value);
+
+        android.widget.TextView cap = new android.widget.TextView(this);
+        cap.setText(caption);
+        cap.setTextColor(Theme.FAINT);
+        cap.setTextSize(9);
+        cap.setGravity(Gravity.CENTER_HORIZONTAL);
+        box.addView(cap);
+        return value;
+    }
+
+    private static final String[] MONTH_NAMES = {"января", "февраля", "марта", "апреля",
+            "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"};
+
+    /** Показать панель за конкретный день. */
+    void showDayPanel(int year, int month0, int day) {
+        if (dayPanel == null) return;
+        int[] stats = Steps.dayStats(this, year, month0, day);
+        int steps = stats[0];
+        int minutes = stats[1];
+        int[] hours = Steps.hourly(this, year, month0, day);
+        int[] peak = Steps.peakHour(hours);
+
+        dayTitle.setText(day + " " + MONTH_NAMES[month0] + " " + year);
+        daySteps.setText(fmt(steps));
+        String km = String.format(Locale.US, "%.1f", steps * Steps.strideMeters(this) / 1000.0)
+                .replace('.', ',');
+        dayKm.setText(km);
+        dayTime.setText(minutes > 0 ? Ui.duration(minutes) : "—");
+        dayKcal.setText(Steps.showCalories(this) && steps > 0
+                ? "≈ " + fmt(Steps.calories(this, steps)) : "—");
+        dayChart.setHours(hours);
+
+        if (steps <= 0) {
+            dayHint.setText("за этот день записей нет");
+        } else if (peak[0] >= 0) {
+            dayHint.setText("максимальная активность — " + peak[0] + ":00, "
+                    + fmt(peak[1]) + " шагов");
+        } else {
+            dayHint.setText("шаги за день: " + fmt(steps));
+        }
+
+        dayScrim.setVisibility(android.view.View.VISIBLE);
+        dayPanel.setVisibility(android.view.View.VISIBLE);
+        dayPanel.post(new Runnable() {
+            @Override public void run() {
+                dayPanel.setTranslationY(-dayPanel.getHeight() - dp(10));
+                dayPanel.animate().translationY(0f).setDuration(240L).start();
+            }
+        });
+    }
+
+    /** Убрать панель. */
+    void hideDayPanel() {
+        if (dayPanel == null || dayPanel.getVisibility() != android.view.View.VISIBLE) return;
+        dayScrim.setVisibility(android.view.View.GONE);
+        dayPanel.animate().translationY(-dayPanel.getHeight() - dp(10)).setDuration(200L)
+                .withEndAction(new Runnable() {
+                    @Override public void run() {
+                        dayPanel.setVisibility(android.view.View.GONE);
+                    }
+                }).start();
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (dayPanel != null && dayPanel.getVisibility() == android.view.View.VISIBLE) {
+            hideDayPanel();
+            return;
+        }
+        super.onBackPressed();
     }
 
     /** Календарь месяца: шапка с переключением и сам календарь. */
@@ -217,6 +402,12 @@ public class StatsActivity extends Activity {
         head.addView(next);
 
         final MonthCalendarView view = new MonthCalendarView(this);
+        view.setOnDayTap(new MonthCalendarView.OnDayTap() {
+            @Override public void onDay(int y, int m, int d) {
+                view.setSelectedDay(d);
+                showDayPanel(y, m, d);
+            }
+        });
         LinearLayout.LayoutParams vp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(250));
         vp.topMargin = dp(6);

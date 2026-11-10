@@ -36,6 +36,14 @@ final class SensorSync {
      * журнал параллельно.
      */
     static synchronized Result sync(Context ctx) {
+        return sync(ctx, 1500L);
+    }
+
+    /**
+     * То же, но с настраиваемым ожиданием после flush: тап по виджету ждёт дольше,
+     * потому что телефон отдаёт накопленную пачку шагов с задержкой.
+     */
+    static synchronized Result sync(Context ctx, long afterFlushMs) {
         Result r = new Result();
 
         SensorManager sm = (SensorManager) ctx.getSystemService(Context.SENSOR_SERVICE);
@@ -63,12 +71,43 @@ final class SensorSync {
             first.await(1500, TimeUnit.MILLISECONDS);
         } catch (InterruptedException ignored) { }
 
-        // просим сенсорный хаб сбросить буфер: так приходят замеры, сделанные без нас
+        // Просим сенсорный хаб сбросить буфер: так приходят замеры, сделанные без нас.
+        // После flush ждём именно НОВОЕ событие, а не просто полсекунды: часть телефонов
+        // отдаёт накопленную пачку с задержкой, и раньше мы уходили со старым значением
+        // (виджет по тапу показывал цифру пятиминутной давности).
+        int before = events.size();
+        long rawBefore = -1L;
+        synchronized (events) {
+            if (!events.isEmpty()) {
+                SensorEvent last = events.get(events.size() - 1);
+                if (last != null && last.values != null && last.values.length > 0) {
+                    rawBefore = Math.round(last.values[0]);
+                }
+            }
+        }
         try {
             sm.flush(listener);
         } catch (Exception ignored) { }
+        long deadline = SystemClock.elapsedRealtime() + Math.max(800L, afterFlushMs);
+        while (SystemClock.elapsedRealtime() < deadline) {
+            boolean changed = false;
+            synchronized (events) {
+                if (events.size() > before) {
+                    SensorEvent last = events.get(events.size() - 1);
+                    if (last != null && last.values != null && last.values.length > 0) {
+                        changed = Math.round(last.values[0]) != rawBefore;
+                    }
+                }
+            }
+            if (changed) break;                      // пришло новое значение — хватит
+            try {
+                Thread.sleep(50L);
+            } catch (InterruptedException ignored) {
+                break;
+            }
+        }
         try {
-            Thread.sleep(500);
+            Thread.sleep(150L);      // даём последнему событию осесть в списке
         } catch (InterruptedException ignored) { }
 
         sm.unregisterListener(listener);

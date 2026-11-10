@@ -32,6 +32,24 @@ public class MonthCalendarView extends View {
     private int month;
     private int[] daySteps = new int[0];
     private int goal = 10000;
+    private int selectedDay = 0;
+
+    /** Нажатие на день календаря. */
+    interface OnDayTap {
+        void onDay(int year, int month0, int day);
+    }
+
+    private OnDayTap tapListener;
+
+    void setOnDayTap(OnDayTap l) {
+        tapListener = l;
+    }
+
+    /** Выделить день рамкой (после открытия панели). */
+    void setSelectedDay(int day) {
+        selectedDay = day;
+        invalidate();
+    }
 
     public MonthCalendarView(Context c) {
         super(c);
@@ -118,7 +136,7 @@ public class MonthCalendarView extends View {
                 cellBg.setColor(tint(Theme.ACCENT, 0.16f + 0.55f * k));
                 c.drawRoundRect(r, radius, radius, cellBg);
             }
-            if (isToday) {
+            if (isToday || day == selectedDay) {
                 c.drawRoundRect(r, radius, radius, cellRing);
             }
 
@@ -126,6 +144,39 @@ public class MonthCalendarView extends View {
             float baseline = cy + (num.getTextSize() / 2f) - 2f * d;
             c.drawText(String.valueOf(day), cx, baseline, p);
         }
+    }
+
+    @Override
+    public boolean onTouchEvent(android.view.MotionEvent e) {
+        if (e.getActionMasked() != android.view.MotionEvent.ACTION_UP) {
+            return e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN;
+        }
+        int day = dayAt(e.getX(), e.getY());
+        if (day > 0 && tapListener != null) {
+            tapListener.onDay(year, month, day);
+            return true;
+        }
+        return true;
+    }
+
+    /** Какое число под точкой (0 — мимо). Геометрия та же, что в onDraw. */
+    private int dayAt(float x, float y) {
+        Calendar cal = Calendar.getInstance();
+        cal.set(year, month, 1);
+        int days = cal.getActualMaximum(Calendar.DAY_OF_MONTH);
+        int firstCol = (cal.get(Calendar.DAY_OF_WEEK) + 5) % 7;
+        float w = getWidth();
+        float h = getHeight();
+        float headH = 20f * d;
+        float cw = w / 7f;
+        float ch = (h - headH) / 6f;
+        if (y < headH - 6f * d) return 0;
+        int col = (int) (x / cw);
+        int row = (int) ((y - headH) / ch);
+        if (col < 0 || col > 6 || row < 0) return 0;
+        int idx = row * 7 + col;
+        int day = idx - firstCol + 1;
+        return (day >= 1 && day <= days) ? day : 0;
     }
 
     /** Акцентный цвет с прозрачностью: чем больше шагов, тем плотнее заливка. */

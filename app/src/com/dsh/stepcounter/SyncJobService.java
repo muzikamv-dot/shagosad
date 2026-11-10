@@ -31,7 +31,6 @@ public class SyncJobService extends JobService {
                 boolean ok = false;
                 try {
                     SensorSync.sync(SyncJobService.this);
-                    StepWidget.refresh(SyncJobService.this);
                     ok = true;
                 } catch (Exception ignored) {
                 } finally {

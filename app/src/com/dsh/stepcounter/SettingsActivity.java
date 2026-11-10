@@ -553,30 +553,6 @@ public class SettingsActivity extends Activity {
         testBox.addView(again);
 
         // для проверки сорняков и увядания без ожидания дней
-        // Сезон виджета: чтобы посмотреть все четыре оформления, не ждав календаря
-        final Button seasonBtn = row("");
-        final String[] seasonNames = {"зима", "весна", "лето", "осень"};
-        final Runnable showSeason = new Runnable() {
-            @Override public void run() {
-                int ov = SeasonDeco.override(SettingsActivity.this);
-                seasonBtn.setText(ov < 0
-                        ? "Сезон виджета: по календарю (тест)"
-                        : "Сезон виджета: " + seasonNames[ov] + " (тест)");
-            }
-        };
-        seasonBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                int ov = SeasonDeco.override(SettingsActivity.this);
-                ov++;
-                if (ov > 3) ov = -1;
-                SeasonDeco.setOverride(SettingsActivity.this, ov);
-                StepWidget.refresh(SettingsActivity.this);
-                showSeason.run();
-            }
-        });
-        testBox.addView(seasonBtn);
-        showSeason.run();
-
         Button skipDay = row("Смоделировать пропуск дня (тест)");
         skipDay.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
@@ -901,7 +877,6 @@ public class SettingsActivity extends Activity {
                 .putInt("manual_steps", 0)
                 .putString("manual_day", Steps.today())
                 .apply();
-        StepWidget.refresh(SettingsActivity.this);
         Toast.makeText(SettingsActivity.this, "Прогресс сброшен", Toast.LENGTH_SHORT).show();
     }
 

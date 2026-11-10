@@ -14,8 +14,11 @@ import android.content.Intent;
  */
 public class UnlockReceiver extends BroadcastReceiver {
 
-    /** Чаще раза в 2 минуты не замеряем: разблокировок за день бывает много. */
-    private static final long MIN_GAP_MS = 2 * 60 * 1000L;
+    /**
+     * Чаще раза в 20 секунд не замеряем: разблокировок за день бывает много,
+     * но и ждать две минуты, глядя на виджет, незачем.
+     */
+    private static final long MIN_GAP_MS = 20 * 1000L;
 
     @Override
     public void onReceive(Context context, Intent intent) {
