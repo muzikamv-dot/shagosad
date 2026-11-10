@@ -31,10 +31,17 @@ public final class Rare {
     static final int[] ALL = {MAGIC, DAWN};
 
     /**
-     * Сколько кадров у редкого цветка. Стадии игры идут 0…10, поэтому кадров 11:
-     * иначе последняя стадия рисовалась бы тем же кадром, что и предыдущая.
+     * Сколько кадров у вида.
+     *
+     * Правило: у волшебной ромашки 10 кадров (старая графика), у ВСЕХ новых редких
+     * цветов — 11 кадров: у них есть промежуточный кадр между семечком и ростком.
+     *
+     * Раньше счётчик был общим, и ромашка на последней стадии просила несуществующий
+     * magic_stage_11 — цветок исчезал из сада и открытки.
      */
-    public static final int STAGES = 11;
+    public static int frames(int species) {
+        return species == MAGIC ? 10 : 11;
+    }
 
     private static final SparseArray<Bitmap> CACHE = new SparseArray<>();
     /** Кэш доли высоты растения в кадре. */
@@ -81,13 +88,21 @@ public final class Rare {
     /** Кадр стадии: 0 — только семечко, 10 — раскрытый цветок. */
     public static Bitmap art(Context ctx, int species, int stage) {
         if (ctx == null || !isRare(species)) return null;
-        int index = Math.max(1, Math.min(STAGES, stage + 1));   // 0 → кадр 1, 10 → кадр 11
+        int last = frames(species);
+        int index = Math.max(1, Math.min(last, stage + 1));   // 0 → первый кадр
         int key = species * 100 + index;
         Bitmap b = CACHE.get(key);
         if (b != null) return b;
-        int res = ctx.getResources().getIdentifier(
-                String.format(Locale.US, prefix(species) + "%02d", index),
-                "drawable", ctx.getPackageName());
+
+        // если кадра нет — отступаем назад, но цветок всё равно показываем
+        int at = index;
+        int res = 0;
+        while (at >= 1 && res == 0) {
+            res = ctx.getResources().getIdentifier(
+                    String.format(Locale.US, prefix(species) + "%02d", at),
+                    "drawable", ctx.getPackageName());
+            if (res == 0) at--;
+        }
         if (res == 0) return null;
         b = BitmapFactory.decodeResource(ctx.getResources(), res);
         if (b != null) CACHE.put(key, b);
@@ -101,7 +116,7 @@ public final class Rare {
         Bitmap b = CACHE.get(key);
         if (b != null) return b;
         int res = ctx.getResources().getIdentifier(
-                String.format(Locale.US, prefix(species) + "%02db", STAGES),
+                String.format(Locale.US, prefix(species) + "%02db", frames(species)),
                 "drawable", ctx.getPackageName());
         if (res == 0) return null;
         b = BitmapFactory.decodeResource(ctx.getResources(), res);
@@ -115,7 +130,7 @@ public final class Rare {
      * и без этой поправки поздние стадии выглядят ниже предыдущих.
      */
     public static float contentRatio(Context ctx, int species, int stage) {
-        int key = species * 100 + Math.max(0, Math.min(STAGES, stage));
+        int key = species * 100 + Math.max(0, Math.min(frames(species), stage));
         Float cached = RATIO.get(key);
         if (cached != null) return cached;
         Bitmap b = art(ctx, species, stage);

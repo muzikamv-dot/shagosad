@@ -405,29 +405,35 @@ final class Steps {
     }
 
     /**
-     * Активные минуты за сегодня — по интервалам журнала, а не «шаги ÷ 100».
-     * Минута считается, если за неё прошли хотя бы 15 шагов, а разрыв между
-     * замерами не больше 10 минут (иначе телефон просто лежал).
+     * Время в движении за сегодня.
+     *
+     * Считаем по журналу: между двумя точками берём прирост шагов и переводим его
+     * в минуты по обычному темпу ходьбы (100 шагов в минуту), но не больше самого
+     * промежутка. Раньше промежутки длиннее 10 минут выбрасывались целиком —
+     * телефон синхронизируется раз в 15 минут, и время выходило смешным:
+     * 10 000 шагов превращались в 14 минут.
      */
     static int activeMinutes(Context ctx) {
         List<long[]> list = load(ctx);
         if (list.size() < 2) return 0;
         String today = today();
-        long total = 0;
+        double minutes = 0;
         for (int i = 1; i < list.size(); i++) {
             long[] a = list.get(i - 1);
             long[] b = list.get(i);
             long dt = b[0] - a[0];
-            if (dt <= 0 || dt > 10 * 60000L) continue;
+            if (dt <= 0) continue;
+            double gapMin = dt / 60000.0;
+            if (gapMin > 180) continue;          // телефон лежал полдня — не считаем
             String dayB = b.length >= 5 ? keyToDay(b[3]) : null;
             if (dayB == null) dayB = dayOf(b[0]);
             if (!dayB.equals(today)) continue;
             long delta = b[2] - a[2];
             if (delta < 0) delta = b[2];
-            if (delta >= 15) total += dt;
+            if (delta < 15) continue;            // пара шагов по квартире — не прогулка
+            minutes += Math.min(delta / 100.0, gapMin);
         }
-        long minutes = Math.round(total / 60000.0);
-        return (int) Math.max(0, Math.min(24 * 60, minutes));
+        return (int) Math.max(0, Math.min(24 * 60, Math.round(minutes)));
     }
 
     /**
@@ -487,8 +493,11 @@ final class Steps {
      */
     static int minutesShown(Context ctx, int steps, boolean[] estimated) {
         int real = activeMinutes(ctx);
-        if (estimated != null) estimated[0] = false;
-        if (real > 0) return real;
+        if (real > 0) {
+            // время считается по шагам, поэтому это оценка — показываем «≈»
+            if (estimated != null) estimated[0] = true;
+            return real;
+        }
         if (steps < 100) return 0;
         if (estimated != null) estimated[0] = true;
         return Math.max(1, steps / 100);

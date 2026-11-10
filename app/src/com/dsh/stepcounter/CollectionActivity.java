@@ -220,7 +220,7 @@ public class CollectionActivity extends Activity {
             final int sp = species;
             if (findCard(species) == null) continue;
             ImageView view = new ImageView(this);
-            android.graphics.Bitmap art = Rare.art(this, sp, Rare.STAGES);
+            android.graphics.Bitmap art = Rare.art(this, sp, Rare.frames(sp));
             if (art != null) view.setImageBitmap(art);
             view.setScaleType(ImageView.ScaleType.FIT_CENTER);
             GradientDrawable gold = new GradientDrawable();

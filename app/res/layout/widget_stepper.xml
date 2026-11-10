@@ -1,39 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Виджет целиком рисуется кодом в битмап (кольцо-прямоугольник с насечками
+     и цифрами внутри), поэтому здесь только картинка на весь размер. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:gravity="center"
-    android:background="@drawable/widget_bg"
-    android:padding="10dp">
+    android:layout_height="match_parent">
 
-    <TextView
-        android:id="@+id/widget_steps"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="0"
-        android:textSize="34sp"
-        android:textColor="#FFFFFF"
-        android:includeFontPadding="false"
-        android:fontFamily="sans-serif-thin" />
-
-    <TextView
-        android:id="@+id/widget_caption"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="шагов сегодня"
-        android:textSize="11sp"
-        android:textColor="#C9C9D2" />
-
-    <ProgressBar
-        android:id="@+id/widget_bar"
-        style="?android:attr/progressBarStyleHorizontal"
+    <ImageView
+        android:id="@+id/widget_image"
         android:layout_width="match_parent"
-        android:layout_height="6dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginLeft="6dp"
-        android:layout_marginRight="6dp"
-        android:progressDrawable="@drawable/widget_progress"
-        android:max="100"
-        android:progress="0" />
-</LinearLayout>
+        android:layout_height="match_parent"
+        android:scaleType="fitXY"
+        android:contentDescription="ШагоСад: шаги сегодня" />
+</FrameLayout>

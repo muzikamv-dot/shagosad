@@ -154,7 +154,7 @@ public final class Postcard {
             } catch (Exception ignored) { }
         } else if (magic) {
             // волшебная ромашка: готовая картинка раскрытого цветка
-            Bitmap flower = Rare.art(ctx, card.species, Rare.STAGES);
+            Bitmap flower = Rare.art(ctx, card.species, Rare.frames(card.species));
             if (flower != null) {
                 float fh = 520f;
                 float fw = fh * flower.getWidth() / flower.getHeight();

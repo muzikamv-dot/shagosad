@@ -62,4 +62,24 @@ final class AlarmScheduler {
             am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
         } catch (Exception ignored) { }
     }
+
+
+    /**
+     * Убирает будильник виджета от версий 283 и раньше: раньше он будил телефон
+     * каждые три минуты, теперь виджет обновляется по тапу и замером раз в 15 минут.
+     * Класс приёмника удалён, поэтому ищем запись по имени компонента.
+     */
+    static void cancelLegacyWidgetTick(Context ctx) {
+        AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+        if (am == null) return;
+        try {
+            Intent i = new Intent().setClassName(ctx, "com.dsh.stepcounter.WidgetTickReceiver");
+            PendingIntent pi = PendingIntent.getBroadcast(ctx, 2, i,
+                    PendingIntent.FLAG_NO_CREATE | PendingIntent.FLAG_IMMUTABLE);
+            if (pi != null) {
+                am.cancel(pi);
+                pi.cancel();
+            }
+        } catch (Exception ignored) { }
+    }
 }

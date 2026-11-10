@@ -158,6 +158,7 @@ public class MainActivity extends Activity {
         }
         AlarmScheduler.schedule(this);
         SyncJobService.schedule(this);   // замер шагов в фоне: точная разбивка по дням
+        AlarmScheduler.cancelLegacyWidgetTick(this);
         AlarmScheduler.scheduleSync(this);   // и будильник: он пробивается через сон
         askFirstRunPermissions();
         // погода для сцены: один запрос на запуск приложения, дальше живёт кэш
