@@ -172,6 +172,7 @@ public class ShopActivity extends Activity {
         row.setPadding(dp(12), dp(10), dp(12), dp(10));
 
         AvatarView av = new AvatarView(this);
+        av.setArtIndex(game.avatarImage);
         av.setStyle(game.avatarStyle, game.avatarPalette);
         av.setNick(game.nick);
         av.setFrame(id);

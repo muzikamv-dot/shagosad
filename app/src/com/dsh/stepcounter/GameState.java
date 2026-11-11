@@ -146,6 +146,7 @@ public class GameState {
     public String checkDay = "";
 
     public String nick = "";
+    public int avatarImage = -1;      // готовый портрет с листа; -1 — старый значок
     public int avatarStyle = 0;
     public int avatarPalette = 0;
     public int avatarFrame = 0;
@@ -286,7 +287,8 @@ public class GameState {
             g.waterProgress = o.optInt("waterProgress", -1);
             g.stepsMark = o.optInt("stepsMark", -1);
             g.nick = o.optString("nick", "");
-            g.avatarStyle = o.optInt("avatarStyle", 0);
+            g.avatarImage = o.optInt("avatarImage", -1);
+        g.avatarStyle = o.optInt("avatarStyle", 0);
             g.avatarPalette = o.optInt("avatarPalette", 0);
             g.avatarFrame = o.optInt("avatarFrame", 0);
             JSONArray fr = o.optJSONArray("ownedFrames");
@@ -418,6 +420,7 @@ public class GameState {
         // остаются рамки за очки, старый ник и аватар
         ownedFrames.clear();
         avatarFrame = 0;
+        avatarImage = -1;
         avatarStyle = 0;
         avatarPalette = 0;
         nick = "";
@@ -571,7 +574,8 @@ public class GameState {
             o.put("waterProgress", waterProgress);
             o.put("stepsMark", stepsMark);
             o.put("nick", nick);
-            o.put("avatarStyle", avatarStyle);
+            o.put("avatarImage", avatarImage);
+        o.put("avatarStyle", avatarStyle);
             o.put("avatarPalette", avatarPalette);
             o.put("avatarFrame", avatarFrame);
             o.put("ownedFrames", new JSONArray(ownedFrames));

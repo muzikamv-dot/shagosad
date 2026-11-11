@@ -1755,12 +1755,21 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(dp(92), dp(92));
         alp.gravity = Gravity.CENTER_HORIZONTAL;
         alp.topMargin = dp(8);
+        // тап по аватарке сразу открывает выбор: кнопка внизу больше не нужна
+        avatar.setClickable(true);
+        avatar.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { pickAvatar(); }
+        });
         root.addView(avatar, alp);
 
         nickView = new TextView(this);
         nickView.setTextSize(19);
         nickView.setTextColor(Theme.TEXT);
         nickView.setGravity(Gravity.CENTER);
+        nickView.setClickable(true);
+        nickView.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { editNick(); }
+        });
         LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         nlp.topMargin = dp(10);
@@ -1773,9 +1782,6 @@ public class MainActivity extends Activity {
         root.addView(rankView);
 
         profSub = new TextView(this);
-        avatar.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { pickAvatar(); }
-        });
 
         profSub.setTextSize(10);
         profSub.setTextColor(Theme.FAINT);
@@ -1859,33 +1865,6 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams r1p = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         r1p.topMargin = dp(16);
-        LinearLayout editRow = new LinearLayout(this);
-        editRow.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams erp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        erp.topMargin = dp(14);
-
-        Button nickBtn = outlined("Сменить ник");
-        nickBtn.setSingleLine(true);
-        nickBtn.setAutoSizeTextTypeUniformWithConfiguration(
-                9, 13, 1, TypedValue.COMPLEX_UNIT_SP);
-        nickBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { editNick(); }
-        });
-        LinearLayout.LayoutParams nbp = new LinearLayout.LayoutParams(0, dp(46), 1f);
-        nbp.rightMargin = dp(8);
-        editRow.addView(nickBtn, nbp);
-
-        Button avBtn = outlined("Сменить аватар");
-        avBtn.setSingleLine(true);
-        avBtn.setAutoSizeTextTypeUniformWithConfiguration(
-                9, 13, 1, TypedValue.COMPLEX_UNIT_SP);
-        avBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { pickAvatar(); }
-        });
-        editRow.addView(avBtn, new LinearLayout.LayoutParams(0, dp(46), 1f));
-
-        root.addView(editRow, erp);
 
         statP = statCard(row1, "ОЧКИ", true);
         pointsCount = new CountUp(statP, new CountUp.Fmt() {
@@ -2008,42 +1987,56 @@ public class MainActivity extends Activity {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Аватар");
 
-        for (int st = 0; st < 4; st++) {
-            LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            rp.bottomMargin = dp(10);
-            for (int pl = 0; pl < 5; pl++) {
-                final int style = st, palette = pl;
-                AvatarView v = new AvatarView(this);
-                v.setStyle(style, palette);
-                v.setNick("preview");
+        int current = game.avatarImage;
 
-                GradientDrawable sel = new GradientDrawable();
-                sel.setShape(GradientDrawable.OVAL);
-                sel.setColor(Theme.SURFACE);
-                if (style == game.avatarStyle && palette == game.avatarPalette) {
-                    sel.setStroke(dp(2), Theme.ACCENT);
-                }
-                v.setBackground(sel);
+        // сетка 4 в ряд, все портреты в прокручиваемой области
+        ScrollView scroller = new ScrollView(this);
+        LinearLayout grid = new LinearLayout(this);
+        grid.setOrientation(LinearLayout.VERTICAL);
+        scroller.addView(grid);
 
-                v.setOnClickListener(new View.OnClickListener() {
-                    @Override public void onClick(View view) {
-                        game.avatarStyle = style;
-                        game.avatarPalette = palette;
-                        game.save(MainActivity.this);
-                        refreshProfile();
-                        if (holder[0] != null) holder[0].dismiss();
-                    }
-                });
-
-                LinearLayout.LayoutParams vp = new LinearLayout.LayoutParams(dp(56), dp(56));
-                vp.rightMargin = dp(10);
-                row.addView(v, vp);
+        final int cols = 4;
+        for (int i = 0; i < AvatarView.artCount(); i++) {
+            if (i % cols == 0) {
+                LinearLayout row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                rp.bottomMargin = dp(8);
+                grid.addView(row, rp);
             }
-            box.addView(row, rp);
+            LinearLayout row = (LinearLayout) grid.getChildAt(grid.getChildCount() - 1);
+
+            final int index = i;
+            AvatarView v = new AvatarView(this);
+            v.setArtIndex(index);
+            v.setNick("preview");
+
+            GradientDrawable sel = new GradientDrawable();
+            sel.setShape(GradientDrawable.OVAL);
+            sel.setColor(Theme.SURFACE);
+            if (index == current) sel.setStroke(dp(2), Theme.ACCENT);
+            v.setBackground(sel);
+
+            v.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View view) {
+                    game.avatarImage = index;
+                    game.avatarStyle = 0;
+                    game.avatarPalette = 0;
+                    game.save(MainActivity.this);
+                    refreshProfile();
+                    if (holder[0] != null) holder[0].dismiss();
+                }
+            });
+
+            LinearLayout.LayoutParams vp = new LinearLayout.LayoutParams(dp(56), dp(56));
+            vp.rightMargin = dp(10);
+            row.addView(v, vp);
         }
+
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(320));
+        box.addView(scroller, sp);
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -2131,20 +2124,39 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) { }
     }
 
-    private void pickPhoto() {
+    /** Открыть галерею конкретного приложения; false — если такого нет. */
+    private boolean pickPhotoWith(String pkg) {
         try {
-            Intent pick = new Intent(Intent.ACTION_PICK,
+            Intent i = new Intent(Intent.ACTION_PICK,
                     android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
-            pick.setType("image/*");
-            startActivityForResult(pick, 200);
-        } catch (Exception e) {
-            try {
-                Intent any = new Intent(Intent.ACTION_GET_CONTENT);
-                any.setType("image/*");
-                startActivityForResult(Intent.createChooser(any, "Выберите фото"), 200);
-            } catch (Exception e2) {
-                Toast.makeText(this, "Галерея недоступна", Toast.LENGTH_SHORT).show();
+            i.setType("image/*");
+            if (pkg != null) {
+                i.setPackage(pkg);
+                if (getPackageManager().resolveActivity(i, 0) == null) return false;
             }
+            startActivityForResult(i, 200);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void pickPhoto() {
+        // выбранное фото должно снова стать главным, даже если раньше был портрет
+        game.avatarImage = -1;
+        game.save(this);
+
+        // галерея телефона: сначала родная, потом Google Фото, потом любой выбор изображения
+        if (pickPhotoWith("com.hihonor.photos")) return;
+        if (pickPhotoWith("com.google.android.apps.photos")) return;
+        if (pickPhotoWith(null)) return;
+        try {
+            Intent any = new Intent(Intent.ACTION_GET_CONTENT);
+            any.addCategory(Intent.CATEGORY_OPENABLE);
+            any.setType("image/*");
+            startActivityForResult(Intent.createChooser(any, "Выберите фото"), 200);
+        } catch (Exception e) {
+            Toast.makeText(this, "Галерея недоступна", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -2185,6 +2197,8 @@ public class MainActivity extends Activity {
             }
 
             avatarBitmap = bm;
+            game.avatarImage = -1;
+            game.save(this);
             FileOutputStream out = new FileOutputStream(new File(getFilesDir(), "avatar.png"), false);
             bm.compress(Bitmap.CompressFormat.PNG, 92, out);
             out.close();
@@ -2199,6 +2213,7 @@ public class MainActivity extends Activity {
 
     private void refreshProfile() {
         if (nickView == null) return;
+        avatar.setArtIndex(game.avatarImage);
         avatar.setStyle(game.avatarStyle, game.avatarPalette);
         avatar.setPhoto(avatarBitmap);
         avatar.setFrame(game.avatarFrame);

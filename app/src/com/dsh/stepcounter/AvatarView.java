@@ -29,6 +29,11 @@ public class AvatarView extends View {
     private String nick = "";
     private Bitmap photo;
     private int frame = 0;
+    /** Готовые портреты с листа художника; -1 — рисовать старый процедурный значок. */
+    private int artIndex = -1;
+
+    private static final int[] AVATAR_ART = {R.drawable.avatar_01, R.drawable.avatar_02, R.drawable.avatar_03, R.drawable.avatar_04, R.drawable.avatar_05, R.drawable.avatar_06, R.drawable.avatar_07, R.drawable.avatar_08, R.drawable.avatar_09, R.drawable.avatar_10, R.drawable.avatar_11, R.drawable.avatar_12, R.drawable.avatar_13, R.drawable.avatar_14, R.drawable.avatar_15, R.drawable.avatar_16, R.drawable.avatar_17, R.drawable.avatar_18, R.drawable.avatar_19, R.drawable.avatar_20, R.drawable.avatar_21, R.drawable.avatar_22, R.drawable.avatar_23, R.drawable.avatar_24};
+    private static final android.util.SparseArray<Bitmap> ART_CACHE = new android.util.SparseArray<>();
 
     private static final int[] LEAF = {0xFF3FB57A, 0xFF57C98B, 0xFFE0A34A, 0xFFC77DD4, 0xFF5AA8D8};
     private static final int[] FACE = {0xFFF3C6A5, 0xFFF7D7BE, 0xFFEFC09B, 0xFFF2CBB4, 0xFFF5CFAF};
@@ -43,6 +48,30 @@ public class AvatarView extends View {
         this.style = Math.max(0, style % 4);
         this.palette = Math.max(0, palette % 5);
         invalidate();
+    }
+
+    /** Показать готовый портрет по номеру. */
+    public void setArtIndex(int index) {
+        this.artIndex = index;
+        invalidate();
+    }
+
+    public static int artCount() {
+        return AVATAR_ART.length;
+    }
+
+    private Bitmap avatarArt() {
+        int idx = artIndex % AVATAR_ART.length;
+        if (idx < 0) idx = 0;
+        Bitmap cached = ART_CACHE.get(idx);
+        if (cached != null) return cached;
+        try {
+            Bitmap b = android.graphics.BitmapFactory.decodeResource(getResources(), AVATAR_ART[idx]);
+            if (b != null) ART_CACHE.put(idx, b);
+            return b;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public void setNick(String n) { nick = n == null ? "" : n; invalidate(); }
@@ -68,6 +97,24 @@ public class AvatarView extends View {
                 Theme.PANEL_TOP, Theme.PANEL_BOTTOM, Shader.TileMode.CLAMP));
         c.drawCircle(cx, cy, rad * 0.84f, p);
         p.setShader(null);
+
+        // готовый портрет с листа художника
+        if (artIndex >= 0) {
+            Bitmap art = avatarArt();
+            if (art != null) {
+                c.save();
+                Path circle = new Path();
+                circle.addCircle(cx, cy, in, Path.Direction.CW);
+                c.clipPath(circle);
+                float scale = (in * 2f) / art.getWidth();
+                float dw = art.getWidth() * scale, dh = art.getHeight() * scale;
+                r.set(cx - dw / 2f, cy - dh / 2f, cx + dw / 2f, cy + dh / 2f);
+                c.drawBitmap(art, null, r, p);
+                c.restore();
+                Shop.drawFrame(c, cx, cy, rad, frame, d, getContext());
+                return;
+            }
+        }
 
         if (photo != null) {
             c.save();
