@@ -993,6 +993,23 @@ public class MainActivity extends Activity {
             cal.add(java.util.Calendar.DAY_OF_YEAR, 1);
         }
 
+        // тап по графику: на неделе — сразу карточка этого дня, на 30/90 — просто статистика
+        history.setOnDayTap(new HistoryView.OnDayTap() {
+            @Override public void onDay(int index) {
+                int n = histRange;
+                java.util.Calendar cal = java.util.Calendar.getInstance();
+                cal.set(java.util.Calendar.HOUR_OF_DAY, 12);
+                cal.add(java.util.Calendar.DAY_OF_YEAR, -(n - 1 - index));
+                android.content.Intent go = new android.content.Intent(MainActivity.this, StatsActivity.class);
+                if (n <= 7) {
+                    go.putExtra("day_y", cal.get(java.util.Calendar.YEAR));
+                    go.putExtra("day_m", cal.get(java.util.Calendar.MONTH));
+                    go.putExtra("day_d", cal.get(java.util.Calendar.DAY_OF_MONTH));
+                }
+                startActivity(go);
+            }
+        });
+
         history.setShowValues(n <= 7);   // цифры читаются только на недельном графике
         history.setData(v, l, game.goal);
         history.setVisibility(View.VISIBLE);

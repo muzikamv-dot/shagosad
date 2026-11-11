@@ -577,6 +577,17 @@ public class SettingsActivity extends Activity {
         testBox.addView(addPoints);
 
         // вода: чтобы проверять сад и рост редких цветов без недели ходьбы
+        // убрать воду, выданную для скриншотов
+        Button waterZero = row("Вода: сбросить в 0 (тест)");
+        waterZero.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                game.water = 0;
+                game.save(SettingsActivity.this);
+                Toast.makeText(SettingsActivity.this, "Вода: 0 леек", Toast.LENGTH_SHORT).show();
+            }
+        });
+        testBox.addView(waterZero);
+
         Button addWater10 = row("Начислить 10 леек (тест)");
         addWater10.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {

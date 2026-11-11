@@ -59,6 +59,31 @@ public class HistoryView extends View {
         invalidate();
     }
 
+    /** Нажатие по столбику: индекс дня в массиве values. */
+    public interface OnDayTap {
+        void onDay(int index);
+    }
+
+    private OnDayTap dayTap;
+
+    public void setOnDayTap(OnDayTap l) {
+        dayTap = l;
+    }
+
+    @Override
+    public boolean onTouchEvent(android.view.MotionEvent e) {
+        if (e.getActionMasked() != android.view.MotionEvent.ACTION_UP) {
+            return e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN;
+        }
+        if (values.length == 0) return true;
+        float slot = getWidth() / (float) values.length;
+        int idx = (int) (e.getX() / slot);
+        if (idx < 0) idx = 0;
+        if (idx >= values.length) idx = values.length - 1;
+        if (dayTap != null) dayTap.onDay(idx);
+        return true;
+    }
+
     /** Цифры над столбиками: включаем только на недельном графике. */
     public void setShowValues(boolean on) {
         this.showValues = on;

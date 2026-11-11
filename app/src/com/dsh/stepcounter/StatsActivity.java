@@ -43,6 +43,16 @@ public class StatsActivity extends Activity {
         getWindow().setStatusBarColor(Color.TRANSPARENT);
         game = GameState.load(this);
         setContentView(build());
+
+        // пришли с главной по тапу на график — сразу показываем карточку этого дня
+        final int dayY = getIntent().getIntExtra("day_y", -1);
+        if (dayY > 0 && host != null) {
+            final int dayM = getIntent().getIntExtra("day_m", 0);
+            final int dayD = getIntent().getIntExtra("day_d", 1);
+            host.post(new Runnable() {
+                @Override public void run() { showDayPanel(dayY, dayM, dayD); }
+            });
+        }
     }
 
     private int dp(int v) {
