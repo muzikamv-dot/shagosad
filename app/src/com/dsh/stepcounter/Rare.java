@@ -124,6 +124,51 @@ public final class Rare {
         return b;
     }
 
+    private static final SparseArray<Bitmap> CROP = new SparseArray<>();
+
+    /**
+     * Кадр, обрезанный по самому цветку.
+     *
+     * В исходных кадрах много прозрачных полей — на открытке и в коллекции из-за них
+     * цветок выглядел крошечным. Здесь обрезаем по содержимому, чтобы его можно было
+     * растянуть на всю высоту карточки.
+     */
+    public static Bitmap artCropped(Context ctx, int species, int stage) {
+        int key = species * 100 + Math.max(0, Math.min(frames(species), stage + 1));
+        Bitmap cached = CROP.get(key);
+        if (cached != null) return cached;
+
+        Bitmap full = art(ctx, species, stage);
+        if (full == null) return null;
+
+        int w = full.getWidth(), h = full.getHeight();
+        int[] row = new int[w];
+        int top = h, bottom = 0, left = w, right = 0;
+        for (int y = 0; y < h; y++) {
+            full.getPixels(row, 0, w, 0, y, w, 1);
+            for (int x = 0; x < w; x++) {
+                if ((row[x] >>> 24) > 24) {
+                    if (y < top) top = y;
+                    if (y > bottom) bottom = y;
+                    if (x < left) left = x;
+                    if (x > right) right = x;
+                }
+            }
+        }
+        if (bottom <= top || right <= left) return full;
+
+        int pad = 4;
+        left = Math.max(0, left - pad);
+        top = Math.max(0, top - pad);
+        right = Math.min(w - 1, right + pad);
+        bottom = Math.min(h - 1, bottom + pad);
+
+        Bitmap cropped = Bitmap.createBitmap(full, left, top,
+                right - left + 1, bottom - top + 1);
+        CROP.put(key, cropped);
+        return cropped;
+    }
+
     /**
      * Какая доля кадра занята самим растением по высоте (от верхушки до земли).
      * Нужна, чтобы растение росло РАВНОМЕРНО: кадры нарисованы с разной высотой,

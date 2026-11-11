@@ -35,6 +35,51 @@ public final class Postcard {
 
     private Postcard() { }
 
+    /** Обрезает прозрачные поля вокруг цветка. */
+    private static Bitmap cropped(Bitmap full) {
+        if (full == null) return null;
+        int w = full.getWidth(), h = full.getHeight();
+        int[] row = new int[w];
+        int top = h, bottom = 0, left = w, right = 0;
+        for (int y = 0; y < h; y++) {
+            full.getPixels(row, 0, w, 0, y, w, 1);
+            for (int x = 0; x < w; x++) {
+                if ((row[x] >>> 24) > 24) {
+                    if (y < top) top = y;
+                    if (y > bottom) bottom = y;
+                    if (x < left) left = x;
+                    if (x > right) right = x;
+                }
+            }
+        }
+        if (bottom <= top || right <= left) return full;
+        int pad = 4;
+        left = Math.max(0, left - pad);
+        top = Math.max(0, top - pad);
+        right = Math.min(w - 1, right + pad);
+        bottom = Math.min(h - 1, bottom + pad);
+        return Bitmap.createBitmap(full, left, top, right - left + 1, bottom - top + 1);
+    }
+
+    /**
+     * Один размер цветка для всех открыток: редкие, ивентовые и обычные.
+     *
+     * Карточки одинаковые, поэтому цветок везде занимает одну и ту же высоту (700)
+     * и ограничен по ширине — тогда он отчётливо виден и не теснится.
+     */
+    private static void drawFlower(Canvas c, Bitmap full, Paint p) {
+        Bitmap flower = cropped(full);
+        if (flower == null) return;
+        float fh = 700f;
+        float fw = fh * flower.getWidth() / flower.getHeight();
+        if (fw > 640f) {
+            fw = 640f;
+            fh = fw * flower.getHeight() / flower.getWidth();
+        }
+        float lx = W / 2f - fw / 2f;
+        c.drawBitmap(flower, null, new RectF(lx, 900f - fh, lx + fw, 900f), p);
+    }
+
     public static Bitmap render(Context ctx, GameState.Card card) {
         // праздничная открытка идёт по тому же шаблону, что коллекционные
         boolean ev = card != null && card.species == -1;
@@ -136,31 +181,25 @@ public final class Postcard {
             try {
                 Bitmap ribbon = BitmapFactory.decodeResource(ctx.getResources(), R.drawable.event_ribbon);
                 if (ribbon != null) {
-                    float rw = 600f;
+                    // лента стоит над цветком: сам цветок не уменьшаем, поднимаем ленту
+                    // и чуть ужимаем её, чтобы верхние лепестки были видны целиком
+                    float rw = 520f;
                     float rh = rw * ribbon.getHeight() / ribbon.getWidth();
                     float lx = W / 2f - rw / 2f;
-                    c.drawBitmap(ribbon, null, new RectF(lx, 236f, lx + rw, 236f + rh), p);
+                    float ry = 132f;
+                    c.drawBitmap(ribbon, null, new RectF(lx, ry, lx + rw, ry + rh), p);
                 }
             } catch (Exception ignored) { }
             // сам праздничный цветок
             try {
                 Bitmap flower = BitmapFactory.decodeResource(ctx.getResources(), R.drawable.event_stage_20);
-                if (flower != null) {
-                    float fh = 470f;
-                    float fw = fh * flower.getWidth() / flower.getHeight();
-                    float lx = W / 2f - fw / 2f;
-                    c.drawBitmap(flower, null, new RectF(lx, 900f - fh, lx + fw, 900f), p);
-                }
+                drawFlower(c, flower, p);
             } catch (Exception ignored) { }
         } else if (magic) {
-            // волшебная ромашка: готовая картинка раскрытого цветка
+            // редкий цветок: берём кадр, обрезанный по самому цветку, и растягиваем
+            // на всю высоту карточки — иначе он тонет в прозрачных полях
             Bitmap flower = Rare.art(ctx, card.species, Rare.frames(card.species));
-            if (flower != null) {
-                float fh = 520f;
-                float fw = fh * flower.getWidth() / flower.getHeight();
-                float lx = W / 2f - fw / 2f;
-                c.drawBitmap(flower, null, new RectF(lx, 900f - fh, lx + fw, 900f), p);
-            }
+            drawFlower(c, flower, p);
         } else {
             KawaiiPlant.draw(c, card.species, 10, W / 2f, 900, 700, 0f, 0.35f);
         }
