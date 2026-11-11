@@ -17,6 +17,7 @@ import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 /** Первое знакомство: что за игра, зачем цель, как получить карточку. */
@@ -57,17 +58,22 @@ public class OnboardingActivity extends Activity {
             }
         });
 
+        // содержимое прокручивается: на маленьких экранах всё влезает
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(Gravity.CENTER_HORIZONTAL);
+        scroll.addView(box);
 
-        // цветок — та же параметрическая модель, что в саду и открытках
-        ImageView iv = new ImageView(this);
-        Bitmap b = Postcard.flowerTinted(this, 24, 0);
-        iv.setImageBitmap(b);
-        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(dp(168), dp(168));
-        ilp.topMargin = dp(2);
-        box.addView(iv, ilp);
+        // обложка: сад в сумерках, низ картинки тёмный — под ним живёт текст
+        ImageView hero = new ImageView(this);
+        hero.setImageResource(R.drawable.onboarding_hero);
+        hero.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(240));
+        hlp.bottomMargin = dp(6);
+        box.addView(hero, hlp);
 
         TextView title = new TextView(this);
         title.setText("ШАГОСАД");
@@ -83,7 +89,7 @@ public class OnboardingActivity extends Activity {
         sub.setTextColor(Theme.MUTED);
         sub.setTextSize(11.5f);
         sub.setGravity(Gravity.CENTER);
-        sub.setPadding(0, dp(6), 0, dp(12));
+        sub.setPadding(0, dp(4), 0, dp(8));
         box.addView(sub);
 
         step(box, "1", "Ставите цель", "Сколько шагов в день комфортно именно вам.");
@@ -96,7 +102,7 @@ public class OnboardingActivity extends Activity {
         goalTitle.setTextColor(Theme.FAINT);
         goalTitle.setTextSize(10);
         goalTitle.setLetterSpacing(0.22f);
-        goalTitle.setPadding(0, dp(14), 0, dp(8));
+        goalTitle.setPadding(0, dp(10), 0, dp(6));
         box.addView(goalTitle);
 
         final EditText goalInput = new EditText(this);
@@ -142,10 +148,6 @@ public class OnboardingActivity extends Activity {
         // даже если пользователь её снимал и обучение показывалось снова
         check.setChecked(getSharedPreferences(Steps.PREFS, MODE_PRIVATE)
                 .getBoolean("onboarding_off", true));
-        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        cp.topMargin = dp(10);
-        box.addView(check, cp);
 
         Button start = Ui.primary(this, "Начать");
         start.setOnClickListener(new View.OnClickListener() {
@@ -160,13 +162,17 @@ public class OnboardingActivity extends Activity {
                 finish();
             }
         });
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
-        sp.topMargin = dp(12);
-        box.addView(start, sp);
 
-        root.addView(box, new LinearLayout.LayoutParams(
+        root.addView(scroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        // галочка и кнопка всегда на виду
+        root.addView(check, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams bp2 = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
+        bp2.topMargin = dp(10);
+        root.addView(start, bp2);
         return root;
     }
 
@@ -183,20 +189,14 @@ public class OnboardingActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         rp.bottomMargin = dp(8);
 
-        TextView badge = new TextView(this);
-        badge.setText(num);
-        badge.setTextColor(Theme.ON_ACCENT);
-        badge.setTextSize(12);
-        badge.setGravity(Gravity.CENTER);
-        badge.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setShape(GradientDrawable.OVAL);
-        bg.setColor(Theme.ACCENT);
-        badge.setBackground(bg);
-        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(26), dp(26));
+        ImageView icon = new ImageView(this);
+        int res = num.equals("1") ? R.drawable.onboarding_goal
+                : num.equals("2") ? R.drawable.onboarding_steps
+                : R.drawable.onboarding_card;
+        icon.setImageResource(res);
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(52), dp(52));
         bp.rightMargin = dp(12);
-        bp.topMargin = dp(2);
-        row.addView(badge, bp);
+        row.addView(icon, bp);
 
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
