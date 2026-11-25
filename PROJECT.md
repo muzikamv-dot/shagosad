@@ -15,7 +15,7 @@
 - package: `com.dsh.stepcounter`
 - launcher label: **ШагоСад**
 - minSdk 26, targetSdk 35, compileSdk 35
-- версия: versionCode 311 / versionName 11.127
+- версия: versionCode 314 / versionName 11.130
 - подпись: `~/.dsh/secrets/stepkey.keystore` (alias stepkey, пароль хранится локально в `secrets.local.ps1` (в репозиторий не попадает))
   резерв: `~/stepapp-keys/stepkey-backup.keystore`
 
@@ -4209,4 +4209,9 @@ eturn, а сбор живёт в отдельном колбэке Listener.onCo
   «Садовник 4435», шаги 34 466, период «Неделя», кнопка «Закрыть».
   11.127 добавляет в сводку обе метрики (шаги и цветы), собрана и
   установлена, SHA-256 `48D1D6F12C047C9B11C165C764D38ACA546B5479DA46FE83D6E9EB9DE5EA5296`.
-- 11.126/11.127 на GitHub не выкладывались; RuStore 11.119 `MODERATION`.
+- **GitHub-релиз v11.127 (25.11.2026):** store-сборка, SHA-256
+  `1AD3945EE67D9F77641B7E097C6FE129CE5482505D0B6B8ACF908FDC850B8DD8`;
+  https://github.com/muzikamv-dot/shagosad/releases/tag/v11.127,
+  APK https://github.com/muzikamv-dot/shagosad/releases/latest/download/ShagoSad.apk.
+  Обе ссылки проверены, хеш совпал, размер 8 473 393 Б.
+- RuStore 11.127 не отправлена; 11.119 всё ещё `MODERATION`, магазин позади GitHub.

@@ -152,6 +152,9 @@ public class GameState {
     public int q1Target = 3000, q1Done = 0, q1Claimed = 0;
     public int q2Target = 2,    q2Done = 0, q2Claimed = 0;
     public int q3Done = 0,      q3Claimed = 0;
+    /** Дополнительные шаговые цели: 50% нормы (+50) и 20% нормы (+10). */
+    public int q4Target = 5000, q4Done = 0, q4Claimed = 0;
+    public int q5Target = 2000, q5Done = 0, q5Claimed = 0;
 
     // ---------------- сорняки, увядание, инструменты ----------------
     /** Сколько раз подряд не выполнялась норма. */
@@ -342,6 +345,16 @@ public class GameState {
                 g.q2Claimed = q.optInt("q2c", 0);
                 g.q3Done = q.optInt("q3d", 0);
                 g.q3Claimed = q.optInt("q3c", 0);
+                g.q4Target = q.optInt("q4t", questTargetPercent(g.goal, 50));
+                g.q4Done = q.optInt("q4d", 0);
+                g.q4Claimed = q.optInt("q4c", 0);
+                g.q5Target = q.optInt("q5t", questTargetPercent(g.goal, 20));
+                g.q5Done = q.optInt("q5d", 0);
+                g.q5Claimed = q.optInt("q5c", 0);
+            } else {
+                // старый сейв без блока заданий: цели считаем от текущей нормы
+                g.q4Target = questTargetPercent(g.goal, 50);
+                g.q5Target = questTargetPercent(g.goal, 20);
             }
 
             JSONArray st = o.optJSONArray("stage");
@@ -500,6 +513,8 @@ public class GameState {
         q1Done = 0; q1Claimed = 0;
         q2Done = 0; q2Claimed = 0;
         q3Done = 0; q3Claimed = 0;
+        q4Done = 0; q4Claimed = 0;
+        q5Done = 0; q5Claimed = 0;
         waterProgress = 0;
         stepsMark = 0;
         questDay = 0;
@@ -559,8 +574,13 @@ public class GameState {
 
     /** Цель задания «пройти шагов» — 80% дневной нормы, кратно 100. */
     public static int questTarget(int goal) {
-        int t = Math.round(goal * 0.8f / 100f) * 100;
-        return Math.max(1000, Math.min(90000, t));
+        return questTargetPercent(goal, 80);
+    }
+
+    /** Цель шагового задания — percent% дневной нормы, кратно 100. */
+    public static int questTargetPercent(int goal, int percent) {
+        int t = Math.round(goal * (percent / 100f) / 100f) * 100;
+        return Math.max(100, Math.min(90000, t));
     }
 
     /**
@@ -580,7 +600,11 @@ public class GameState {
         goal = Math.max(1000, Math.min(100000, g));
         int newCost = stepCost();
         q1Target = questTarget(goal);
+        q4Target = questTargetPercent(goal, 50);
+        q5Target = questTargetPercent(goal, 20);
         if (q1Done > q1Target) q1Done = q1Target;
+        if (q4Done > q4Target) q4Done = q4Target;
+        if (q5Done > q5Target) q5Done = q5Target;
         if (oldCost != newCost && waterProgress > 0) {
             waterProgress = (int) Math.round(waterProgress * (double) newCost / oldCost);
             if (waterProgress >= newCost) waterProgress = newCost - 1;
@@ -728,6 +752,8 @@ public class GameState {
             q.put("q1t", q1Target); q.put("q1d", q1Done); q.put("q1c", q1Claimed);
             q.put("q2t", q2Target); q.put("q2d", q2Done); q.put("q2c", q2Claimed);
             q.put("q3d", q3Done); q.put("q3c", q3Claimed);
+            q.put("q4t", q4Target); q.put("q4d", q4Done); q.put("q4c", q4Claimed);
+            q.put("q5t", q5Target); q.put("q5d", q5Done); q.put("q5c", q5Claimed);
             o.put("quests", q);
 
             o.put("stage", new JSONArray(stage));
@@ -747,8 +773,12 @@ public class GameState {
         if (questDay != dayNum) {
             questDay = dayNum;
             q1Target = questTarget(goal);
+            q4Target = questTargetPercent(goal, 50);
+            q5Target = questTargetPercent(goal, 20);
             q1Done = 0; q1Claimed = 0;
             q2Done = 0; q2Claimed = 0;
+            q4Done = 0; q4Claimed = 0;
+            q5Done = 0; q5Claimed = 0;
             // q3 — недельное задание: его флаг сбрасывается только вместе с неделей,
             // иначе 700 очков можно было получать каждый день до конца недели
             wateredToday = 0;
@@ -849,6 +879,8 @@ public class GameState {
         stepsCacheDay = today;
         if (stepsToday > bestDay) bestDay = stepsToday;
         if (stepsToday > q1Done) q1Done = Math.min(stepsToday, q1Target);
+        if (stepsToday > q4Done) q4Done = Math.min(stepsToday, q4Target);
+        if (stepsToday > q5Done) q5Done = Math.min(stepsToday, q5Target);
         questsClaimed();   // задание по шагам закрывается сразу, без полива
         return true;
     }
@@ -1067,13 +1099,16 @@ public class GameState {
     }
 
     /**
-     * Забрать выполненные задания: три дневных и недельное.
+     * Забрать выполненные задания: пять дневных и недельное.
      * Суммы совпадают с тем, что написано на экране заданий:
-     * шаги — 100, цветок за день — 100, неделя из 7 цветов — 700.
+     * 80% шагов — 100, 50% — 50, 20% — 10, цветок за день — 100,
+     * неделя из 7 цветов — 700.
      */
     public boolean questsClaimed() {
         int add = 0;
         if (q1Done >= q1Target && q1Claimed == 0) { q1Claimed = 1; add += 100; }
+        if (q4Done >= q4Target && q4Claimed == 0) { q4Claimed = 1; add += 50; }
+        if (q5Done >= q5Target && q5Claimed == 0) { q5Claimed = 1; add += 10; }
         if (flowersToday >= 1 && q2Claimed == 0) { q2Claimed = 1; add += 100; }
         if (weekFlowers >= 7 && q3Claimed == 0) { q3Claimed = 1; add += 700; }
         if (add > 0) { earn(add); return true; }

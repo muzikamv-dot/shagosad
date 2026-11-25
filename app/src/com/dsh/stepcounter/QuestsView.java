@@ -65,7 +65,13 @@ public class QuestsView extends View {
 
         // задания
         y += 84 * d + 12 * d;
-        quest(c, pad, y, w - pad * 2, "Пройти " + game.q1Target + " шагов",
+        quest(c, pad, y, w - pad * 2, "Пройти " + Ui.num(game.q5Target) + " шагов",
+                game.q5Done, game.q5Target, game.q5Claimed == 1, "+10 очков", Theme.ACCENT);
+        y += 78 * d;
+        quest(c, pad, y, w - pad * 2, "Пройти " + Ui.num(game.q4Target) + " шагов",
+                game.q4Done, game.q4Target, game.q4Claimed == 1, "+50 очков", Theme.ACCENT);
+        y += 78 * d;
+        quest(c, pad, y, w - pad * 2, "Пройти " + Ui.num(game.q1Target) + " шагов",
                 game.q1Done, game.q1Target, game.q1Claimed == 1, "+100 очков", Theme.ACCENT);
         y += 78 * d;
         quest(c, pad, y, w - pad * 2, "Вырастить цветок сегодня",
