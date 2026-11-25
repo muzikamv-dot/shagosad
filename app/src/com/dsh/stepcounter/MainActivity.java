@@ -210,7 +210,6 @@ public class MainActivity extends Activity {
         // разрешения старый объект датчика мог остаться, но слушатель — нет.
         stopLiveSteps();
         startLiveSteps();   // живой счётчик: цифра меняется, как только сделан шаг
-        ensureStepService();
         ui.removeCallbacks(ticker);
         ui.post(ticker);
         // часы в шапке: обновляем время, дату и город
@@ -2776,19 +2775,6 @@ public class MainActivity extends Activity {
                 == PackageManager.PERMISSION_GRANTED;
     }
 
-    private void ensureStepService() {
-        if (!ConsentActivity.agreed(this)) return;
-        if (!Steps.serviceEnabled(this)) return;
-        if (!hasStepPermission()) return;       // дождёмся разрешения
-        if (Steps.isServiceRunning) return;
-        try {
-            Intent svc = new Intent(this, StepService.class);
-            svc.setAction(StepService.ACTION_START);
-            if (Build.VERSION.SDK_INT >= 26) startForegroundService(svc);
-            else startService(svc);
-        } catch (Exception ignored) { }
-    }
-
     private void toggleService() {
         SharedPreferences p = getSharedPreferences(Steps.PREFS, MODE_PRIVATE);
         boolean on = Steps.serviceEnabled(this);
@@ -2815,7 +2801,6 @@ public class MainActivity extends Activity {
         stopLiveSteps();
         runSync();
         startLiveSteps();
-        ensureStepService();
         refreshAll();
     }
 }

@@ -86,12 +86,11 @@ final class Steps {
     }
 
     /**
-     * Фоновая служба включена по умолчанию. Раньше её надо было включать
-     * вручную, и до этого шаги в фоне не читались вовсе.
+     * Постоянная служба выключена по умолчанию: шагомер не должен висеть
+     * уведомлением. Фоновые замеры идут по точным будильникам.
      */
     static boolean serviceEnabled(Context ctx) {
-        SharedPreferences p = prefs(ctx);
-        return !p.contains(KEY_SERVICE) || p.getBoolean(KEY_SERVICE, true);
+        return prefs(ctx).getBoolean(KEY_SERVICE, false);
     }
 
     /** Разница в днях между двумя датами yyyy-MM-dd (b − a). */

@@ -11,8 +11,9 @@ import android.os.PowerManager;
 final class AlarmScheduler {
 
     /** Как часто забирать показания счётчика в фоне. */
-    // Чаще замеры — точнее график по часам; 5 минут вместо 15 (12.11.2026)
-    static final long SYNC_EVERY_MS = 5 * 60 * 1000L;
+    // Точные будильники в Doze разрешены примерно раз в 9–15 минут.
+    // 15 минут — без постоянной foreground-службы и без уведомления.
+    static final long SYNC_EVERY_MS = 15 * 60 * 1000L;
 
     private AlarmScheduler() { }
 
@@ -77,7 +78,12 @@ final class AlarmScheduler {
 
         long at = System.currentTimeMillis() + Math.max(60_000L, delayMs);
         try {
-            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
+            if (exactAllowed(ctx)) {
+                // Ровный замер без foreground-службы и без уведомления.
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
+            } else {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
+            }
         } catch (Exception ignored) { }
     }
 
