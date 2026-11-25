@@ -56,6 +56,7 @@ public final class Social {
         public String photo = "";
         public int value;
         public boolean anomaly;
+        public boolean self;
     }
 
     /** Общий ответ: либо данные, либо текст ошибки. */
@@ -515,6 +516,7 @@ public final class Social {
             f.frame = o.optInt("frame", 0);
             f.photo = o.optString("photo", "");
             f.anomaly = o.optBoolean("anomaly", false);
+            f.self = o.optBoolean("self", false);
             out.add(f);
         }
         return out;

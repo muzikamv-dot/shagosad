@@ -1,5 +1,6 @@
 package com.dsh.stepcounter;
 
+import android.app.AlertDialog;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -28,11 +29,11 @@ public class RankingActivity extends android.app.Activity {
 
     private GameState game;
     private LinearLayout listBox;
-    // по умолчанию открываем «Все · Шаги · Неделя» — самое понятное для нового игрока
+    // по умолчанию открываем «Друзья · Шаги · Неделя» — с друзьями интереснее
     private int kind = 1;      // 0 — цветы, 1 — шаги
     private int period = 0;    // 0 — неделя, 1 — месяц, 2 — всё время
     /** 0 — общий рейтинг, 1 — только среди друзей. */
-    private int scope = 0;
+    private int scope = 1;
     private TextView[] scopeViews;
     private Button[] kindButtons = new Button[2];
     private Button[] periodButtons = new Button[3];
@@ -273,6 +274,85 @@ public class RankingActivity extends android.app.Activity {
         return t;
     }
 
+    /** Карточка игрока по нажатию на аватар: полный ник и всё, что знает рейтинг. */
+    private void showPlayerCard(int place, Social.Friend f) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(22), dp(6), dp(22), dp(2));
+
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+
+        AvatarView av = new AvatarView(this);
+        if ("photo".equals(f.avatar)) {
+            android.graphics.Bitmap ph = Social.decodePhoto(f.photo);
+            if (ph != null) av.setPhoto(ph);
+        } else if (!f.avatar.isEmpty()) {
+            try { av.setArtIndex(Integer.parseInt(f.avatar)); } catch (Exception ignored) { }
+        }
+        av.setFrame(f.frame);
+        LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(dp(64), dp(64));
+        alp.rightMargin = dp(14);
+        head.addView(av, alp);
+
+        LinearLayout names = new LinearLayout(this);
+        names.setOrientation(LinearLayout.VERTICAL);
+        TextView nick = new TextView(this);
+        nick.setText(f.nick);
+        nick.setTextColor(Theme.TEXT);
+        nick.setTextSize(18f);
+        nick.setTypeface(Ui.medium());
+        nick.setMaxLines(5);
+        names.addView(nick);
+        TextView sub = new TextView(this);
+        sub.setText((f.self ? "это ты · " : "") + "#" + place + " · "
+                + (scope == 1 ? "друзья" : "все"));
+        sub.setTextColor(Theme.MUTED);
+        sub.setTextSize(13f);
+        sub.setPadding(0, dp(3), 0, 0);
+        names.addView(sub);
+        head.addView(names, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        box.addView(head);
+
+        int steps = f.steps;
+        int flowers = f.flowers;
+        // старый кэш мог не знать вторую метрику — подставляем выбранную
+        if (steps == 0 && kind == 1) steps = f.value;
+        if (flowers == 0 && kind == 0) flowers = f.value;
+        infoLine(box, "Период", PERIODS[period]);
+        infoLine(box, "Шаги", Ui.num(steps) + " " + Ui.pluralWord(steps));
+        infoLine(box, "Цветы", Ui.num(flowers) + " " + Ui.flowers(flowers));
+        if (!f.code.isEmpty()) infoLine(box, "Код сада", f.code);
+        if (f.anomaly) infoLine(box, "Отметка", "⚠ необычная активность");
+
+        new AlertDialog.Builder(this)
+                .setTitle("Сводка игрока")
+                .setView(box)
+                .setPositiveButton("Закрыть", null)
+                .show();
+    }
+
+    private void infoLine(LinearLayout parent, String label, String value) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, dp(7), 0, 0);
+        TextView l = new TextView(this);
+        l.setText(label);
+        l.setTextColor(Theme.MUTED);
+        l.setTextSize(13f);
+        row.addView(l, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView v = new TextView(this);
+        v.setText(value);
+        v.setTextColor(Theme.TEXT);
+        v.setTextSize(14f);
+        v.setGravity(Gravity.END);
+        row.addView(v);
+        parent.addView(row);
+    }
+
     private View row(int place, Social.Friend f) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.HORIZONTAL);
@@ -304,6 +384,10 @@ public class RankingActivity extends android.app.Activity {
             try { av.setArtIndex(Integer.parseInt(f.avatar)); } catch (Exception ignored) { }
         }
         av.setFrame(f.frame);
+        av.setContentDescription("Игрок " + f.nick);
+        av.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showPlayerCard(place, f); }
+        });
         LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(dp(44), dp(44));
         alp.leftMargin = dp(8);
         alp.rightMargin = dp(12);
@@ -315,9 +399,15 @@ public class RankingActivity extends android.app.Activity {
         nick.setText(f.nick + (f.anomaly ? "  ⚠" : ""));
         nick.setTextColor(Theme.TEXT);
         nick.setTextSize(15.5f);
+        // Длинный ник переносим на вторую строку, а не обрезаем:
+        // «Садовник 4567» должен остаться целиком.
+        nick.setMaxLines(2);
+        nick.setEllipsize(null);
         texts.addView(nick);
-        card.addView(texts, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        tlp.rightMargin = dp(12);       // воздух между ником и плашкой
+        card.addView(texts, tlp);
 
         TextView val = new TextView(this);
         val.setText(kind == 0 ? Ui.num(f.value) + " " + Ui.flowers(f.value)
@@ -325,6 +415,15 @@ public class RankingActivity extends android.app.Activity {
         val.setTextColor(Theme.ACCENT_SOFT);
         val.setTextSize(15.5f);
         val.setTypeface(Ui.medium());
+        val.setGravity(Gravity.CENTER);
+        val.setIncludeFontPadding(false);
+        val.setMinWidth(dp(78));
+        val.setPadding(dp(10), dp(5), dp(10), dp(5));
+        GradientDrawable pill = new GradientDrawable();
+        pill.setColor(0xFF101E38);
+        pill.setCornerRadius(dp(14));
+        pill.setStroke(dp(1), 0xFF35547F);
+        val.setBackground(pill);
         card.addView(val);
         return card;
     }
