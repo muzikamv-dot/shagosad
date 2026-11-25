@@ -163,16 +163,27 @@ public final class Social {
         }
     }
 
-    /** Привязывает уже существующий сад к телефону (один раз за процесс). */
-    private static void bindExisting(final Context c) {
-        if (bindTried) return;
+    /**
+     * Привязывает существующий сад к телефону. Если сервер говорит
+     * not_found — сад удалён: забываем старый id/secret (deviceKey остаётся),
+     * регистрируем новый сад и продолжаем без ошибки на экране.
+     */
+    private static void bindExisting(final Context c, final String nick, final Runnable after) {
+        if (bindTried) {
+            if (after != null) MAIN.post(after);
+            return;
+        }
         bindTried = true;
         final String id = gardenId(c);
         final String secret = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getString(KEY_SECRET, "");
-        if (id == null || id.isEmpty() || secret == null || secret.isEmpty()) return;
+        if (id == null || id.isEmpty() || secret == null || secret.isEmpty()) {
+            if (after != null) MAIN.post(after);
+            return;
+        }
         background(new Runnable() {
             @Override public void run() {
+                boolean retry = false;
                 try {
                     JSONObject body = new JSONObject();
                     body.put("r", "bind");
@@ -180,9 +191,21 @@ public final class Social {
                     body.put("secret", secret);
                     body.put("device", deviceKey(c));
                     JSONObject res = post(body);
-                    if (res == null || res.has("error")) bindTried = false; // попробуем в следующий раз
+                    if (res == null) {
+                        retry = true;                  // сеть, не трогаем сад
+                    } else if ("not_found".equals(res.optString("error", ""))) {
+                        // Сада на сервере больше нет — регистрируем новый.
+                        c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                                .remove(KEY_ID).remove(KEY_SECRET).apply();
+                        if (ensure(c, nick) == null) retry = true;
+                    } else if (res.has("error")) {
+                        retry = true;                  // auth/route — не плодим сады
+                    }
                 } catch (Exception e) {
-                    bindTried = false;
+                    retry = true;
+                } finally {
+                    if (retry) bindTried = false;
+                    if (after != null) MAIN.post(after);
                 }
             }
         });
@@ -194,8 +217,7 @@ public final class Social {
     public static void ensureAsync(final Context c, final String nick, final Runnable after) {
         String id = gardenId(c);
         if (id != null && !id.isEmpty()) {
-            bindExisting(c);
-            if (after != null) after.run();
+            bindExisting(c, nick, after);
             return;
         }
         background(new Runnable() {

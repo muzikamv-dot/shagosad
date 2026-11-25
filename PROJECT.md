@@ -15,7 +15,7 @@
 - package: `com.dsh.stepcounter`
 - launcher label: **ШагоСад**
 - minSdk 26, targetSdk 35, compileSdk 35
-- версия: versionCode 305 / versionName 11.121
+- версия: versionCode 306 / versionName 11.122
 - подпись: `~/.dsh/secrets/stepkey.keystore` (alias stepkey, пароль хранится локально в `secrets.local.ps1` (в репозиторий не попадает))
   резерв: `~/stepapp-keys/stepkey-backup.keystore`
 
@@ -4145,3 +4145,10 @@ eturn, а сбор живёт в отдельном колбэке Listener.onCo
   в меню разработчика.
 - APK SHA-256 `E86682B7157427204FC8EEE40F608909413C62B335367F04E2DD5F8B1C3A3312`.
   В RuStore не отправлялась; 11.119 в `MODERATION`.
+- **GitHub-релиз v11.121 (25.11.2026):** одна store-сборка (out-pc, без
+  обновлялки), SHA-256 `D7891B265E3AB1C8405B8A51658F41B65BDCA77B7A18591D23A034CB4B8341C9`;
+  https://github.com/muzikamv-dot/shagosad/releases/tag/v11.121,
+  ссылка для пользователей
+  https://github.com/muzikamv-dot/shagosad/releases/latest/download/ShagoSad.apk.
+  RuStore пока отстаёт: 11.119 в модерации. Токен `ghp_…` был прислан в чат —
+  после релиза его нужно отозвать и сделать новый.
