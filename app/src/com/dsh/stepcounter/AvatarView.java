@@ -85,7 +85,11 @@ public class AvatarView extends View {
         super.onDraw(c);
         float w = getWidth(), h = getHeight();
         float cx = w / 2f, cy = h / 2f;
-        float rad = Math.min(w, h) / 2f;
+        // Радиус круга меньше половины вью: рамке нужен запас снаружи.
+        // Самая широкая рамка (Игрушечная) доходит до 1.12 r, а рисуется рамка
+        // на 1.06 r — значит 1.12 * 0.89 = 0.997: всё влезает, ничего не срезается.
+        // Чтобы портрет на экране не уменьшился, сами вью подросли примерно на 12 %.
+        float rad = Math.min(w, h) / 2f * 0.89f;
         float in = rad * 0.74f;                      // рабочая зона персонажа
 
         int leaf = LEAF[palette];

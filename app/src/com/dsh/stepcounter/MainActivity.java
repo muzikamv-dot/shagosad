@@ -2,6 +2,7 @@ package com.dsh.stepcounter;
 
 import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.app.AlarmManager;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -15,6 +16,8 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
@@ -90,6 +93,11 @@ public class MainActivity extends Activity {
     private TextView pill;
     private TextView diagView;
     private RingView ring;
+
+    private FrameLayout ringBox;          // шайба шагов целиком (кольцо + цифры)
+    private RingBubble numbersBox;        // цифры с рамкой в стиле кольца
+    private float ringZoom = 0f;          // 0 — на месте, 1 — выдвинута к глазам
+    private ValueAnimator ringZoomAnim;
     private HistoryView history;
     private TextView historyHint;
     private Button serviceButton;
@@ -120,8 +128,21 @@ public class MainActivity extends Activity {
         Theme.bars(this);
         getWindow().setStatusBarColor(Color.TRANSPARENT);
         getWindow().setNavigationBarColor(Color.TRANSPARENT);
+        // без согласия на обработку данных игра не запускается ни при каком входе
+        if (!ConsentActivity.agreed(this)) {
+            startActivity(new android.content.Intent(this, ConsentActivity.class));
+            finish();
+            return;
+        }
         game = GameState.load(this);
         game.ensureIdentity();
+        game.repairMidnightSteps(this);
+        // счётчик цветов появился позже коллекции: подхватываем уже открытые виды,
+        // чтобы человек не оказался с нулём в рейтинге
+        if (game.flowersCollected == 0 && !game.collection().isEmpty()) {
+            game.flowersCollected = game.collection().size();
+            game.save(this);
+        }
 
         loadAvatar();
         if (game.wasReset) {
@@ -142,12 +163,6 @@ public class MainActivity extends Activity {
         holder.addView(content, new android.widget.FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(holder);
-        if (!AppFlavor.STORE) {
-            getWindow().getDecorView().post(new Runnable() {
-                @Override public void run() { Updater.promptIfUpdate(MainActivity.this); }
-            });
-        }
-
         // Награды: всё, что получено и ещё ни разу не показывалось, проигрываем
         // по очереди полноэкранно. После обновления сюда попадут и старые медали.
         final java.util.List<Achievements.Ach> toShow = Achievements.unshown(game, this);
@@ -162,6 +177,7 @@ public class MainActivity extends Activity {
         SyncJobService.schedule(this);   // замер шагов в фоне: точная разбивка по дням
         AlarmScheduler.scheduleSync(this);   // и будильник: он пробивается через сон
         askFirstRunPermissions();
+        ensureMidnightPermissions();
         // погода для сцены: один запрос на запуск приложения, дальше живёт кэш
         Weather.refreshOnStart(this);
 
@@ -176,6 +192,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        // после возврата из системных настроек переставляем полуночный будильник
+        AlarmScheduler.schedule(this);
+        ensureMidnightPermissions();
         // настройки могли изменить состояние игры — перечитываем файл
         game = GameState.load(this);
         if (garden != null) garden.setGame(game);
@@ -187,7 +206,11 @@ public class MainActivity extends Activity {
         refreshAll();
         rebuildEvents();   // вкладка ивентов зависит от даты и тестового флага
         runSync();
+        // Перерегистрируем живой слушатель на каждом возврате: после выдачи
+        // разрешения старый объект датчика мог остаться, но слушатель — нет.
+        stopLiveSteps();
         startLiveSteps();   // живой счётчик: цифра меняется, как только сделан шаг
+        ensureStepService();
         ui.removeCallbacks(ticker);
         ui.post(ticker);
         // часы в шапке: обновляем время, дату и город
@@ -226,6 +249,7 @@ public class MainActivity extends Activity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
+        root.setClipChildren(false);
         root.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
                 new int[]{Theme.BG_TOP, Theme.BG_BOTTOM,
                            Theme.BG_BOTTOM}));
@@ -293,6 +317,7 @@ public class MainActivity extends Activity {
         root.addView(Ui.divider(this));
 
         container = new SwipeFrameLayout(this);
+        container.setClipChildren(false);
         ((SwipeFrameLayout) container).setListener(new SwipeFrameLayout.Listener() {
             @Override public void onSwipe(int direction) {
                 int next = tab + (direction < 0 ? 1 : -1);
@@ -344,11 +369,8 @@ public class MainActivity extends Activity {
                     });
                     return;
                 } else if (game.stage[0] >= GameState.STAGES) {
-                    game.collect();
-                    collected = true;
-                    cardFlowActive = true;   // уведомление о достижении ждёт закрытия открытки
-                    garden.celebrate();
-                    Haptics.bloom(MainActivity.this);
+                    // цветок готов: одиночный тап НЕ собирает, только удержание
+                    return;
                 } else if (game.waterPlot(0, Steps.today())) {
                     garden.water();
                     Haptics.tap(MainActivity.this);
@@ -370,6 +392,22 @@ public class MainActivity extends Activity {
                 }
             }
 
+            @Override public void onCollected() {
+                if (game.stage[0] < GameState.STAGES) return;
+                game.collect();
+                cardFlowActive = true;       // уведомление о достижении ждёт закрытия открытки
+                garden.celebrate();
+                Haptics.bloom(MainActivity.this);
+                game.save(MainActivity.this);
+                garden.setGame(game);
+                quests.setGame(game);
+                refreshWaterCard();
+                refreshProfile();
+                checkAchievements();
+                garden.postDelayed(new Runnable() {
+                    @Override public void run() { showNewCard(); }
+                }, 800);
+            }
         });
 
         quests = new QuestsView(this);
@@ -598,23 +636,39 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         FrameLayout ringBox = new FrameLayout(this);
+        this.ringBox = ringBox;
+        // при приближении кольцо рисуется крупнее габаритов вью — не обрезаем его
+        ringBox.setClipChildren(false);
+        page.setClipChildren(false);
         // кольцо крупнее: под ним умещаются и пяти-, и шестизначные шаги без мельчения
-        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(dp(250), dp(250));
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(250));
         rlp.gravity = Gravity.CENTER_HORIZONTAL;
         rlp.topMargin = dp(6);
         page.addView(ringBox, rlp);
 
+        // тап по шайбе: она выдвигается к глазам (всё внутри крупнее), второй тап — назад
+        ringBox.setClickable(true);
+        ringBox.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { toggleRingZoom(); }
+        });
+
+        // как рисовать кольцо — из настроек: плоское, объём или текстура из Blender
         ring = new RingView(this);
+        ring.setMode(RingMode.get(this));
         ringBox.addView(ring, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        LinearLayout numbers = new LinearLayout(this);
+        RingBubble numbers = new RingBubble(this);
+        this.numbersBox = numbers;
         numbers.setOrientation(LinearLayout.VERTICAL);
         numbers.setGravity(Gravity.CENTER);
+        // отступ, чтобы линия рамки не липла к цифрам при приближении
+        numbers.setPadding(dp(26), dp(30), dp(26), dp(30));
         // три строки внутри кольца чуть выше центра, иначе нижняя лежит на дуге
         numbers.setTranslationY(-dp(7));
         FrameLayout.LayoutParams nlp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         nlp.gravity = Gravity.CENTER;
         ringBox.addView(numbers, nlp);
 
@@ -642,8 +696,12 @@ public class MainActivity extends Activity {
         goalView.setTextSize(12);
         goalView.setGravity(Gravity.CENTER);
         goalView.setTextAlignment(TextView.TEXT_ALIGNMENT_CENTER);
-        numbers.addView(goalView, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // ширина по тексту: иначе в приближении строка «из … · ×2» переносится,
+        // потому что её держит ширина крупных цифр
+        LinearLayout.LayoutParams glp2 = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        glp2.gravity = Gravity.CENTER_HORIZONTAL;
+        numbers.addView(goalView, glp2);
 
         // расстояние и время в движении — одной мелкой строкой внутри кольца:
         // тем, кто пришёл за шагомером, это нужно сразу, а места почти не занимает
@@ -655,7 +713,8 @@ public class MainActivity extends Activity {
         subView.setGravity(Gravity.CENTER);
         subView.setTextAlignment(TextView.TEXT_ALIGNMENT_CENTER);
         LinearLayout.LayoutParams svlp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        svlp.gravity = Gravity.CENTER_HORIZONTAL;
         svlp.topMargin = dp(2);
         numbers.addView(subView, svlp);
 
@@ -828,10 +887,78 @@ public class MainActivity extends Activity {
         return Ui.secondary(this, text);
     }
 
+    // ---------------- шайба шагов: приближение по тапу ----------------
+
+    /** Тап по шайбе: выдвигаем её к глазам, второй тап — возвращаем на место. */
+    private void toggleRingZoom() {
+        final boolean zoomIn = ringZoom < 0.5f;
+        final float to = zoomIn ? 1f : 0f;
+        if (ringZoomAnim != null) ringZoomAnim.cancel();
+        ringZoomAnim = ValueAnimator.ofFloat(ringZoom, to);
+        ringZoomAnim.setDuration(zoomIn ? 380L : 260L);
+        ringZoomAnim.setInterpolator(zoomIn
+                ? new android.view.animation.OvershootInterpolator(1.15f)
+                : new android.view.animation.DecelerateInterpolator());
+        ringZoomAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(ValueAnimator a) {
+                applyRingZoom((Float) a.getAnimatedValue());
+            }
+        });
+        ringZoomAnim.start();
+        Haptics.tap(this);
+    }
+
+    /** k: 0 — на месте, 1 — ближе к глазам. Кольцо перерисовывается крупнее, текст — другим кеглем. */
+    private void applyRingZoom(float k) {
+        ringZoom = k;
+        if (ringBox == null) return;
+        // ближе к глазам — чуть приподнимаем над экраном
+        ringBox.setTranslationY(-dp(6) * k);
+        if (ring != null) {
+            // кольцо в приближении уходит, вместо него — прямоугольная рамка
+            ring.setDepth(k);
+            ring.setAlpha(1f - Math.min(1f, k * 1.6f));
+        }
+        if (numbersBox != null) numbersBox.setGlow(k);
+        // цифры: не тянем картинку, а задаём другой размер шрифта — так чётко.
+        // Крупнее, чем растёт кольцо: внутри остаётся место, потому что обводка
+        // утолщается медленнее диаметра.
+        float z = 1f + 0.70f * k;
+        if (stepsView != null) {
+            ViewGroup.LayoutParams lp = stepsView.getLayoutParams();
+            int wantW = Math.round(dp(150) * z);
+            if (lp != null && lp.width != wantW) {
+                lp.width = wantW;
+                stepsView.setLayoutParams(lp);
+            }
+            stepsView.setAutoSizeTextTypeUniformWithConfiguration(
+                    18, Math.round(52 * z), 1, TypedValue.COMPLEX_UNIT_SP);
+        }
+        if (goalView != null) goalView.setTextSize(12f * (1f + 0.30f * k));
+        if (subView != null) subView.setTextSize(10.5f * (1f + 0.30f * k));
+        // объём: мягкая тень под цифрами появляется вместе с приближением
+        float sh = 5f * k;
+        ringTextShadow(stepsView, sh);
+        ringTextShadow(goalView, sh * 0.7f);
+        ringTextShadow(subView, sh * 0.6f);
+    }
+
+    /** Тень у текста внутри шайбы: при k = 0 её нет вовсе. */
+    private void ringTextShadow(TextView v, float radiusDp) {
+        if (v == null) return;
+        if (radiusDp <= 0.15f) {
+            v.setShadowLayer(0.01f, 0f, 0f, 0);
+            return;
+        }
+        v.setShadowLayer(radiusDp, 0f, radiusDp * 0.45f, 0x66000000);
+    }
+
     // ---------------- данные ----------------
 
     private int sensorSteps() {
-        return getSharedPreferences(Steps.PREFS, MODE_PRIVATE).getInt(Steps.KEY_STEPS, 0);
+        // только за сегодня: иначе после полуночи в счёт идёт вчерашнее число
+        // и вода начисляется второй раз (см. Steps.cachedToday)
+        return Steps.cachedToday(this);
     }
 
     private int manualSteps() {
@@ -905,16 +1032,45 @@ public class MainActivity extends Activity {
         }
     }
 
+    private static boolean scorePushed = false;
+
+    /** Отправляем свой счёт в облако один раз за запуск (и после сбора букета). */
+    private void pushScoreToCloud() {
+        if (scorePushed) return;
+        scorePushed = true;
+        // ensure может сходить в сеть (регистрация/привязка). Раньше он вызывался
+        // прямо в UI-потоке; на новом телефоне это могло дать NetworkOnMainThread.
+        // Теперь регистрация/привязка идут в фоне, отправка счёта — после неё.
+        Social.ensureAsync(this, game.nick, new Runnable() {
+            @Override public void run() {
+                Social.pushScore(getApplicationContext(), game);
+            }
+        });
+    }
+
     private void refreshAll() {
         int steps = totalSteps();
         animateSteps(steps);
-        ring.setProgress(steps, game.goal);
+        // В день после заморозки кольцо закрывается вдвое быстрее: сама цифра
+        // шагов остаётся настоящей, бонус касается только закрытия нормы.
+        int goalSteps = game.stepsForGoal(steps);
+        // тестовый режим: посмотреть кольцо без прогресса
+        boolean ringZero = getSharedPreferences(Steps.PREFS, MODE_PRIVATE)
+                .getBoolean("ring_test_zero", false);
+        if (ring != null) ring.setProgress(ringZero ? 0 : goalSteps, ringZero ? 100 : game.goal);
+        pushScoreToCloud();
 
-        double pctRaw = steps * 100.0 / Math.max(1, game.goal);
+        if (numbersBox != null) {
+            numbersBox.setProgress(game.goal <= 0 ? 0f
+                    : Math.min(1f, goalSteps / (float) game.goal));
+        }
+
+        double pctRaw = goalSteps * 100.0 / Math.max(1, game.goal);
         String pctText = pctRaw < 1.0
                 ? String.format(Locale.US, "%.1f", pctRaw).replace('.', ',')
                 : String.valueOf((int) Math.min(100, pctRaw));
-        goalView.setText("из " + fmt(game.goal) + " · " + pctText + "%");
+        goalView.setText("из " + fmt(game.goal) + " · " + pctText + "%"
+                + (game.bonusToday() ? " · ×2" : ""));
 
         if (subView != null) {
             double km = steps * Steps.strideMeters(this) / 1000.0;
@@ -1024,10 +1180,11 @@ public class MainActivity extends Activity {
         else if (!sensorOk) pill("Нужно разрешение", 0xFFFFB49A, bg);
         else if (steps >= game.goal) pill("Цель достигнута", Theme.GOLD, bg);
         else if (game.streak > 0) pill("Поливы " + game.streak + " дн. · вода " + game.water, Theme.ACCENT_SOFT, bg);
-        else pill("Экономный режим", Theme.ACCENT_SOFT, bg);
+        else pill.setVisibility(View.GONE);      // нечего сказать — плашку не показываем
     }
 
     private void pill(String s, int fg, int bg) {
+        pill.setVisibility(View.VISIBLE);
         pill.setText(s);
         pill.setTextColor(fg);
         pill.setBackground(rounded(bg, 30));
@@ -1751,29 +1908,64 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(16), dp(4), dp(16), dp(16));
 
+        // аватарка с карандашом в правом верхнем углу: видно, что можно менять
+        FrameLayout avatarBox = new FrameLayout(this);
+        // поле вокруг круга: значок стоит в углу контейнера, поэтому не обрезается
+        // и не наезжает на обводку аватарки
+        int boxSide = 88 + 34 * 2;   // круг 88 dp и по 34 dp поля вокруг
         avatar = new AvatarView(this);
-        LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(dp(92), dp(92));
-        alp.gravity = Gravity.CENTER_HORIZONTAL;
-        alp.topMargin = dp(8);
-        // тап по аватарке сразу открывает выбор: кнопка внизу больше не нужна
         avatar.setClickable(true);
         avatar.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { pickAvatar(); }
         });
-        root.addView(avatar, alp);
+        FrameLayout.LayoutParams avP = new FrameLayout.LayoutParams(dp(100), dp(100));
+        avP.gravity = Gravity.CENTER;
+        avatarBox.addView(avatar, avP);
+
+        EditBadge avatarPen = new EditBadge(this);
+        FrameLayout.LayoutParams penP = new FrameLayout.LayoutParams(dp(19), dp(19));
+        // значок сидит снаружи круга: отрицательные отступы выносят его за обводку
+        penP.gravity = Gravity.TOP | Gravity.RIGHT;
+        // ставим значок точно на угол круга, но снаружи: расстояние больше суммы радиусов
+        penP.rightMargin = dp(19);
+        penP.topMargin = dp(19);
+        avatarPen.setClickable(true);
+        avatarPen.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { pickAvatar(); }
+        });
+        avatarBox.addView(avatarPen, penP);
+
+        LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(
+                dp(boxSide), dp(boxSide));
+        alp.gravity = Gravity.CENTER_HORIZONTAL;
+        alp.topMargin = dp(8);
+        root.addView(avatarBox, alp);
+
+        LinearLayout nickRow = new LinearLayout(this);
+        nickRow.setOrientation(LinearLayout.HORIZONTAL);
+        nickRow.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        nickRow.setClickable(true);
+        nickRow.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { editNick(); }
+        });
 
         nickView = new TextView(this);
         nickView.setTextSize(19);
         nickView.setTextColor(Theme.TEXT);
         nickView.setGravity(Gravity.CENTER);
-        nickView.setClickable(true);
-        nickView.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { editNick(); }
-        });
+        nickRow.addView(nickView);
+
+        EditBadge nickPen = new EditBadge(this);
+        nickPen.setScale(0.78f);
+        LinearLayout.LayoutParams npP = new LinearLayout.LayoutParams(dp(19), dp(19));
+        npP.leftMargin = dp(6);
+        npP.topMargin = 0;            // выравниваем по верху строки, без обрезки
+        nickRow.addView(nickPen, npP);
+
         LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         nlp.topMargin = dp(10);
-        root.addView(nickView, nlp);
+        root.addView(nickRow, nlp);
 
         rankView = new TextView(this);
         rankView.setTextSize(12);
@@ -1841,6 +2033,32 @@ public class MainActivity extends Activity {
         });
         actions2.addView(achButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
         root.addView(actions2, ap2);
+        // Друзья и рейтинги — сетевые экраны, отдельными карточками
+        LinearLayout socialRow = new LinearLayout(this);
+        socialRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams srp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        srp.topMargin = dp(10);
+
+        Button rankButton = outlined("Рейтинги");
+        rankButton.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, RankingActivity.class));
+            }
+        });
+        LinearLayout.LayoutParams rlp2 = new LinearLayout.LayoutParams(0, dp(46), 1f);
+        rlp2.rightMargin = dp(10);
+        socialRow.addView(rankButton, rlp2);
+
+        Button friendsButton = outlined("Друзья");
+        friendsButton.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, FriendsActivity.class));
+            }
+        });
+        socialRow.addView(friendsButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        root.addView(socialRow, srp);
+
 
         // Статистика шагов — отдельным экраном, чтобы главная вкладка осталась лёгкой
         LinearLayout actions3 = new LinearLayout(this);
@@ -2016,7 +2234,11 @@ public class MainActivity extends Activity {
             sel.setShape(GradientDrawable.OVAL);
             sel.setColor(Theme.SURFACE);
             if (index == current) sel.setStroke(dp(2), Theme.ACCENT);
-            v.setBackground(sel);
+            // рамка выбора обводит сам круг аватара, а не всю вью: в AvatarView
+            // круг занимает 0.89 от половины, значит по краям остаётся запас
+            int inset = Math.round(dp(63) * (1f - 0.89f) / 2f);
+            v.setBackground(new android.graphics.drawable.InsetDrawable(sel,
+                    inset, inset, inset, inset));
 
             v.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View view) {
@@ -2029,7 +2251,7 @@ public class MainActivity extends Activity {
                 }
             });
 
-            LinearLayout.LayoutParams vp = new LinearLayout.LayoutParams(dp(56), dp(56));
+            LinearLayout.LayoutParams vp = new LinearLayout.LayoutParams(dp(63), dp(63));
             vp.rightMargin = dp(10);
             row.addView(v, vp);
         }
@@ -2399,17 +2621,25 @@ public class MainActivity extends Activity {
     /** Подписаться на живой счётчик шагов, пока экран приложения открыт. */
     private void startLiveSteps() {
         try {
+            // Без разрешения регистрация молча не срабатывает, а старый код
+            // всё равно запоминал датчик — и после выдачи разрешения больше
+            // не пытался подписаться. Отсюда «0 шагов первые 5 минут».
+            if (!SensorSync.hasActivityPermission(this)) return;
             if (liveSensorManager == null) {
                 liveSensorManager = (android.hardware.SensorManager)
                         getSystemService(SENSOR_SERVICE);
             }
             if (liveSensorManager == null || liveSensor != null) return;
-            liveSensor = liveSensorManager.getDefaultSensor(
+            android.hardware.Sensor sensor = liveSensorManager.getDefaultSensor(
                     android.hardware.Sensor.TYPE_STEP_COUNTER);
-            if (liveSensor == null) return;
-            liveSensorManager.registerListener(liveListener, liveSensor,
+            if (sensor == null) return;
+            boolean ok = liveSensorManager.registerListener(liveListener, sensor,
                     android.hardware.SensorManager.SENSOR_DELAY_NORMAL);
-        } catch (Exception ignored) { }
+            // Живым считаем только реально зарегистрированный датчик.
+            liveSensor = ok ? sensor : null;
+        } catch (Exception ignored) {
+            liveSensor = null;
+        }
     }
 
     private void stopLiveSteps() {
@@ -2463,6 +2693,62 @@ public class MainActivity extends Activity {
         askRuntimePermissions();
     }
 
+    /**
+     * Полночь должна быть точной: иначе Android/OEM сдвигает будильник на час,
+     * и шаги, пройденные вечером, оказываются в следующем дне. Просим точные
+     * будильники и исключение из экономии батареи — по одному разу, без нытья.
+     */
+    private void ensureMidnightPermissions() {
+        SharedPreferences p = getSharedPreferences(Steps.PREFS, MODE_PRIVATE);
+        if (Build.VERSION.SDK_INT >= 31) {
+            AlarmManager am = (AlarmManager) getSystemService(ALARM_SERVICE);
+            if (am != null && !am.canScheduleExactAlarms()) {
+                if (!p.getBoolean("asked_exact_alarm", false)) {
+                    p.edit().putBoolean("asked_exact_alarm", true).apply();
+                    new AlertDialog.Builder(this)
+                            .setTitle("Точные будильники")
+                            .setMessage("Чтобы шаги разделялись ровно в полночь, разрешите "
+                                    + "приложению точные будильники. Без этого полночный замер "
+                                    + "может задержаться на час, и вечерние шаги уйдут в следующий день.")
+                            .setPositiveButton("Разрешить", new DialogInterface.OnClickListener() {
+                                @Override public void onClick(DialogInterface d, int w) {
+                                    try {
+                                        startActivity(new Intent(
+                                                Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                                                Uri.parse("package:" + getPackageName())));
+                                    } catch (Exception ignored) { }
+                                }
+                            })
+                            .setNegativeButton("Позже", null)
+                            .show();
+                }
+                return;   // без точного будильника батарею не просим — сначала главное
+            }
+        }
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName())
+                && !p.getBoolean("asked_battery_free", false)) {
+            p.edit().putBoolean("asked_battery_free", true).apply();
+            new AlertDialog.Builder(this)
+                    .setTitle("Работа в фоне")
+                    .setMessage("Чтобы будильник полуночи не уснул вместе с телефоном, "
+                            + "откройте список приложений, найдите ШагоСад и выберите "
+                            + "«Без ограничений» или «Разрешить работу в фоне».")
+                    .setPositiveButton("Открыть", new DialogInterface.OnClickListener() {
+                        @Override public void onClick(DialogInterface d, int w) {
+                            try {
+                                // без разрешения REQUEST_IGNORE_BATTERY_OPTIMIZATIONS:
+                                // Play Protect считал его подозрительным
+                                startActivity(new Intent(
+                                        Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+                            } catch (Exception ignored) { }
+                        }
+                    })
+                    .setNegativeButton("Позже", null)
+                    .show();
+        }
+    }
+
     private void askRuntimePermissions() {
         List<String> need = new ArrayList<>();
         if (!hasStepPermission()) need.add("android.permission.ACTIVITY_RECOGNITION");
@@ -2490,9 +2776,22 @@ public class MainActivity extends Activity {
                 == PackageManager.PERMISSION_GRANTED;
     }
 
+    private void ensureStepService() {
+        if (!ConsentActivity.agreed(this)) return;
+        if (!Steps.serviceEnabled(this)) return;
+        if (!hasStepPermission()) return;       // дождёмся разрешения
+        if (Steps.isServiceRunning) return;
+        try {
+            Intent svc = new Intent(this, StepService.class);
+            svc.setAction(StepService.ACTION_START);
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(svc);
+            else startService(svc);
+        } catch (Exception ignored) { }
+    }
+
     private void toggleService() {
         SharedPreferences p = getSharedPreferences(Steps.PREFS, MODE_PRIVATE);
-        boolean on = p.getBoolean(Steps.KEY_SERVICE, false);
+        boolean on = Steps.serviceEnabled(this);
         boolean next = !on;
         p.edit().putBoolean(Steps.KEY_SERVICE, next).apply();
 
@@ -2511,6 +2810,12 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int code, String[] perms, int[] res) {
         super.onRequestPermissionsResult(code, perms, res);
+        // Разрешение могло быть выдано уже после первого onResume:
+        // подписываемся заново и сразу забираем текущее показание.
+        stopLiveSteps();
+        runSync();
+        startLiveSteps();
+        ensureStepService();
         refreshAll();
     }
 }

@@ -30,6 +30,7 @@ public class UnlockReceiver extends BroadcastReceiver {
         if (now - last < MIN_GAP_MS) return;
         Steps.prefs(app).edit().putLong("last_unlock_sync", now).apply();
 
-        SyncReceiver.runOnce(app);
+        final BroadcastReceiver.PendingResult pending = goAsync();
+        SyncReceiver.runOnce(app, 1500L, pending);
     }
 }

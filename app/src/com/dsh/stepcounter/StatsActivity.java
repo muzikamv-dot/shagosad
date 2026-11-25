@@ -2,7 +2,10 @@ package com.dsh.stepcounter;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -31,7 +34,7 @@ public class StatsActivity extends Activity {
     private android.widget.FrameLayout host;
     private android.view.View dayPanel;
     private android.view.View dayScrim;
-    private android.widget.TextView dayTitle, daySteps, dayKm, dayTime, dayKcal, dayHint;
+    private android.widget.TextView dayTitle, daySteps, dayKm, dayTime, daySpeed, dayKcal, dayHint;
     private DayHoursView dayChart;
 
     @Override
@@ -61,9 +64,23 @@ public class StatsActivity extends Activity {
     }
 
     private int stepsToday() {
-        int cached = Steps.prefs(this).getInt(Steps.KEY_STEPS, 0);
+        // кэш читаем только за сегодня — иначе до первого замера покажет вчерашнее
+        int cached = Steps.cachedToday(this);
         int[] last = Steps.lastDays(this, 1);
         return Math.max(cached, last.length > 0 ? last[0] : 0);
+    }
+
+    /**
+     * Средняя скорость ходьбы: километры делим на время в движении.
+     * Возвращает строку вида «4,6 км/ч» или null, если считать не из чего
+     * (нет шагов или не набралось ни минуты).
+     */
+    private String kmhText(int steps, int minutes) {
+        if (steps < 100 || minutes < 1) return null;
+        double km = steps * Steps.strideMeters(this) / 1000.0;
+        double kmh = km * 60.0 / minutes;
+        if (kmh <= 0.1) return null;
+        return String.format(Locale.US, "%.1f", kmh).replace('.', ',') + " км/ч";
     }
 
     private View build() {
@@ -121,37 +138,19 @@ public class StatsActivity extends Activity {
         int[] quarter = Steps.lastDays(this, 91);
 
         // ---------- сегодня ----------
-        boolean[] est = new boolean[1];
-        int minutes = Steps.minutesShown(this, steps, est);
+        int minutes = Steps.minutesShown(this, steps, null);
         String kmText = String.format(Locale.US, "%.1f", steps * Steps.strideMeters(this) / 1000.0)
                 .replace('.', ',');
         boolean calOn = Steps.showCalories(this);
-        if (calOn) {
-            col.addView(card(new String[][]{
-                    {fmt(steps), "сегодня"},
-                    {"≈ " + kmText + " км", "расстояние"},
-                    {(est[0] ? "≈ " : "") + Ui.duration(minutes), "в движении"},
-                    {"≈ " + fmt(Steps.calories(this, steps)), "ккал"}
-            }, 4));
-        } else {
-            col.addView(card(new String[][]{
-                    {fmt(steps), "сегодня"},
-                    {"≈ " + kmText + " км", "расстояние"},
-                    {(est[0] ? "≈ " : "") + Ui.duration(minutes), "в движении"}
-            }, 3));
-        }
 
-        // ---------- калории (только если включены в настройках) ----------
-        if (Steps.showCalories(this)) {
-            TextView cal = new TextView(this);
-            cal.setText("ккал — оценка по весу (" + Steps.weightKg(this)
-                    + " кг) и шагам, точной не бывает.");
-            cal.setTextColor(Theme.FAINT);
-            cal.setTextSize(10);
-            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            clp.topMargin = dp(8);
-            col.addView(cal, clp);
+        // средняя скорость = пройденное расстояние / время в движении
+        String speedText = kmhText(steps, minutes);
+        if (speedText == null) speedText = "—";
+
+        if (calOn) {
+            col.addView(todayCard(steps, kmText, minutes, speedText, true));
+        } else {
+            col.addView(todayCard(steps, kmText, minutes, speedText, false));
         }
 
         // ---------- рекорды ----------
@@ -161,10 +160,11 @@ public class StatsActivity extends Activity {
         }
         int sumMonth = 0, daysMonth = 0;
         for (int v : month) { sumMonth += v; if (v > 0) daysMonth++; }
-        int sumWeek = 0;
-        for (int v : week) sumWeek += v;
+        // неделя считается с понедельника, а не «последние семь дней»
+        int sumWeek = Steps.stepsThisWeek(this);
         int avgMonth = daysMonth > 0 ? Math.round(sumMonth / (float) daysMonth) : 0;
-        int avgWeek = Math.round(sumWeek / 7f);
+        int weekDays = Math.max(1, Steps.daysThisWeek());
+        int avgWeek = Math.round(sumWeek / (float) weekDays);
 
         // в статистике ШАГОВ серия — про норму шагов, а не про поливы
         int normDays = 0;
@@ -263,10 +263,11 @@ public class StatsActivity extends Activity {
         rp.topMargin = dp(10);
         panel.addView(row, rp);
 
-        daySteps = dayCell(row, "шаги");
-        dayKm = dayCell(row, "км");
-        dayTime = dayCell(row, "в движении");
-        dayKcal = dayCell(row, "ккал");
+        daySteps = dayCell(row, "шаги", 1f);
+        dayKm = dayCell(row, "км", 1f);
+        dayTime = dayCell(row, "в движении", 1.3f);
+        daySpeed = dayCell(row, "скорость", 1f);
+        dayKcal = dayCell(row, "ккал", 1f);
 
         dayChart = new DayHoursView(this);
         LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(
@@ -291,24 +292,28 @@ public class StatsActivity extends Activity {
     }
 
     /** Маленькая ячейка «число + подпись». */
-    private android.widget.TextView dayCell(LinearLayout parent, String caption) {
+    private android.widget.TextView dayCell(LinearLayout parent, String caption, float weight) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(Gravity.CENTER_HORIZONTAL);
         parent.addView(box, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                ViewGroup.LayoutParams.WRAP_CONTENT, weight));
 
         android.widget.TextView value = new android.widget.TextView(this);
         value.setTextColor(Theme.TEXT);
         value.setTextSize(15);
         value.setTypeface(Ui.light());
         value.setGravity(Gravity.CENTER_HORIZONTAL);
+        // в панели пять ячеек: «1 ч 24 мин» должно влезать целиком, без сжатия
+        value.setSingleLine(true);
+        value.setAutoSizeTextTypeUniformWithConfiguration(12, 15, 1,
+                TypedValue.COMPLEX_UNIT_SP);
         box.addView(value);
 
         android.widget.TextView cap = new android.widget.TextView(this);
         cap.setText(caption);
         cap.setTextColor(Theme.FAINT);
-        cap.setTextSize(9);
+        cap.setTextSize(8.5f);
         cap.setGravity(Gravity.CENTER_HORIZONTAL);
         box.addView(cap);
         return value;
@@ -332,8 +337,10 @@ public class StatsActivity extends Activity {
                 .replace('.', ',');
         dayKm.setText(km);
         dayTime.setText(minutes > 0 ? Ui.duration(minutes) : "—");
+        String daySpeedText = kmhText(steps, minutes);
+        daySpeed.setText(daySpeedText == null ? "—" : daySpeedText);
         dayKcal.setText(Steps.showCalories(this) && steps > 0
-                ? "≈ " + fmt(Steps.calories(this, steps)) : "—");
+                ? fmt(Steps.calories(this, steps)) : "—");
         dayChart.setHours(hours);
 
         if (steps <= 0) {
@@ -521,10 +528,12 @@ public class StatsActivity extends Activity {
             TextView value = new TextView(this);
             value.setText(it[0]);
             value.setTextColor(Theme.TEXT);
-            value.setTextSize(cells >= 4 ? 14f : 17f);
+            // чем больше ячеек в ряду, тем мельче цифра: пять — самые узкие
+            float valueSize = cells >= 5 ? 12.5f : cells >= 4 ? 14f : 17f;
+            value.setTextSize(valueSize);
             // «40 000» и «100 000» не должны вылезать из своей ячейки
             value.setSingleLine(true);
-            value.setAutoSizeTextTypeUniformWithConfiguration(9, (int) (cells >= 4 ? 14 : 17), 1,
+            value.setAutoSizeTextTypeUniformWithConfiguration(8, (int) valueSize, 1,
                     TypedValue.COMPLEX_UNIT_SP);
             value.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
             value.setGravity(Gravity.CENTER);
@@ -532,7 +541,7 @@ public class StatsActivity extends Activity {
             TextView label = new TextView(this);
             label.setText(it[1]);
             label.setTextColor(Theme.FAINT);
-            label.setTextSize(cells >= 4 ? 8.5f : 9.5f);
+            label.setTextSize(cells >= 5 ? 8f : cells >= 4 ? 8.5f : 9.5f);
             label.setGravity(Gravity.CENTER);
             label.setPadding(0, dp(3), 0, 0);
             cell.addView(label);
@@ -540,6 +549,107 @@ public class StatsActivity extends Activity {
                     ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         }
         return box;
+    }
+
+    /**
+     * Карточка «сегодня»: шаги крупно сверху, под ними одной строкой расстояние,
+     * время, скорость и (если включены) калории. Две строки вместо одной тесной —
+     * чтобы цифры читались, а не сжимались автоподбором.
+     */
+    private View todayCard(int steps, String kmText, int minutes, String speedText,
+                           boolean caloriesOn) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(16), dp(18), dp(16), dp(16));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Theme.CARD);
+        bg.setCornerRadius(dp(20));
+        bg.setStroke(dp(1), Theme.CARD_STROKE);
+        box.setBackground(bg);
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        bp.topMargin = dp(10);
+        box.setLayoutParams(bp);
+
+        TextView big = new TextView(this);
+        big.setText(fmt(steps));
+        big.setTextColor(Theme.TEXT);
+        big.setTextSize(29f);
+        big.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
+        big.setGravity(Gravity.CENTER);
+        big.setSingleLine(true);
+        big.setAutoSizeTextTypeUniformWithConfiguration(20, 29, 1, TypedValue.COMPLEX_UNIT_SP);
+        box.addView(big);
+
+        TextView bigCaption = new TextView(this);
+        bigCaption.setText("шагов сегодня");
+        bigCaption.setTextColor(Theme.FAINT);
+        bigCaption.setTextSize(10.5f);
+        bigCaption.setGravity(Gravity.CENTER);
+        box.addView(bigCaption);
+
+        String[][] items;
+        if (caloriesOn) {
+            items = new String[][]{
+                    {kmText + " км", "расстояние"},
+                    {Ui.duration(minutes), "в движении"},
+                    {speedText, "скорость"},
+                    {fmt(Steps.calories(this, steps)), "ккал"}
+            };
+        } else {
+            items = new String[][]{
+                    {kmText + " км", "расстояние"},
+                    {Ui.duration(minutes), "в движении"},
+                    {speedText, "скорость"}
+            };
+        }
+        box.addView(cellsRow(items, 15f, 9.5f, 16, 1));
+        return box;
+    }
+
+    /**
+     * Ряд ячеек «значение — подпись» внутри готовой карточки.
+     * Ячейка с номером wideIndex получает больше ширины: «1 ч 24 мин» длиннее
+     * остальных цифр и без запаса сжималось автоподбором.
+     */
+    private View cellsRow(String[][] items, float valueSp, float labelSp, int topMarginDp,
+                          int wideIndex) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rp.topMargin = dp(topMarginDp);
+        row.setLayoutParams(rp);
+
+        for (int i = 0; i < items.length; i++) {
+            String[] it = items[i];
+            LinearLayout cell = new LinearLayout(this);
+            cell.setOrientation(LinearLayout.VERTICAL);
+            cell.setGravity(Gravity.CENTER);
+
+            TextView value = new TextView(this);
+            value.setText(it[0]);
+            value.setTextColor(Theme.TEXT);
+            value.setTextSize(valueSp);
+            value.setSingleLine(true);
+            value.setAutoSizeTextTypeUniformWithConfiguration(11, (int) valueSp, 1,
+                    TypedValue.COMPLEX_UNIT_SP);
+            value.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
+            value.setGravity(Gravity.CENTER);
+            cell.addView(value);
+
+            TextView label = new TextView(this);
+            label.setText(it[1]);
+            label.setTextColor(Theme.FAINT);
+            label.setTextSize(labelSp);
+            label.setGravity(Gravity.CENTER);
+            label.setPadding(0, dp(3), 0, 0);
+            cell.addView(label);
+
+            row.addView(cell, new LinearLayout.LayoutParams(0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, i == wideIndex ? 1.3f : 1f));
+        }
+        return row;
     }
 
     /** Недельная цель: полоска прогресса и подпись. */
@@ -562,7 +672,7 @@ public class StatsActivity extends Activity {
         row.setGravity(Gravity.CENTER_VERTICAL);
 
         TextView left = new TextView(this);
-        left.setText(Ui.steps(sum) + " из " + fmt(goal));
+        left.setText(Ui.num(sum) + " шагов из " + fmt(goal));
         left.setTextColor(Theme.TEXT);
         left.setTextSize(13);
         row.addView(left, new LinearLayout.LayoutParams(0,
@@ -576,32 +686,33 @@ public class StatsActivity extends Activity {
         row.addView(right);
         box.addView(row);
 
-        View bar = new View(this);
-        GradientDrawable track = new GradientDrawable();
-        track.setColor(Theme.SURFACE_HI);
-        track.setCornerRadius(dp(5));
-        bar.setBackground(track);
-        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(8));
-        blp.topMargin = dp(10);
-        box.addView(bar, blp);
-
-        // полоска прогресса: ProgressBar с заливкой в акцентный цвет
-        android.widget.ProgressBar progress = new android.widget.ProgressBar(this, null,
-                android.R.attr.progressBarStyleHorizontal);
-        progress.setMax(100);
-        progress.setProgress(Math.max(0, Math.min(100, percent)));
-        try {
-            progress.setProgressTintList(android.content.res.ColorStateList.valueOf(
-                    percent >= 100 ? Theme.GOLD : Theme.ACCENT));
-            progress.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(
-                    Theme.SURFACE_HI));
-            progress.setScaleY(0.7f);
-        } catch (Exception ignored) { }
-        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(12));
-        plp.topMargin = dp(6);
-        box.addView(progress, plp);
+        // Полоска прогресса — одна, скруглённая: серый трек и заливка на нём.
+        // Раньше здесь стояли и пустой View-трек, и ProgressBar: выходили две
+        // серые полосы, верхняя ничем не заполнялась.
+        final int pct = Math.max(0, Math.min(100, percent));
+        final float radius = dp(5);
+        final Paint trackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        trackPaint.setColor(Theme.SURFACE_HI);
+        final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        fillPaint.setColor(percent >= 100 ? Theme.GOLD : Theme.ACCENT);
+        View strip = new View(this) {
+            final RectF rect = new RectF();
+            @Override protected void onDraw(Canvas c) {
+                float r = Math.min(radius, getHeight() / 2f);
+                rect.set(0, 0, getWidth(), getHeight());
+                c.drawRoundRect(rect, r, r, trackPaint);
+                if (pct > 0) {
+                    float fw = getWidth() * pct / 100f;
+                    float fr = Math.min(r, fw / 2f);
+                    rect.set(0, 0, fw, getHeight());
+                    c.drawRoundRect(rect, fr, fr, fillPaint);
+                }
+            }
+        };
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(10));
+        slp.topMargin = dp(12);
+        box.addView(strip, slp);
         return box;
     }
 

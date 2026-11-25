@@ -1,15 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.dsh.stepcounter"
-    android:versionCode="290"
-    android:versionName="11.106-alpha">
+    android:versionCode="304"
+    android:versionName="11.120">
 
     <!-- доступ к счётчику шагов -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
     <!-- реальная погода для сцены в саду: open-meteo по координатам -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
@@ -25,8 +24,9 @@
         android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
-    <!-- исключение из оптимизации батареи -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- исключение из оптимизации батареи больше не запрашиваем:
+         Play Protect принимал это за подозрительное поведение.
+         Пользователь может выставить вручную в настройках системы. -->
 
     <uses-feature android:name="android.hardware.sensor.stepcounter" android:required="false" />
 
@@ -35,20 +35,17 @@
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.NoActionBar">
-
-        <provider
-            android:name=".ApkProvider"
-            android:authorities="com.dsh.stepcounter.apk"
+        android:theme="@android:style/Theme.Material.NoActionBar">        <activity
+            android:name=".MainActivity"
             android:exported="false"
-            android:grantUriPermissions="true" />
-
+            android:screenOrientation="portrait"
+            android:label="@string/app_name" />
 
         <activity
-            android:name=".MainActivity"
+            android:name=".ConsentActivity"
             android:exported="true"
             android:screenOrientation="portrait"
-            android:label="@string/app_name">
+            android:label="ШагоСад">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -114,6 +111,24 @@
             android:label="Инвентарь" />
 
         <activity
+            android:name=".FriendsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:label="Друзья" />
+
+        <activity
+            android:name=".PrivacyActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:label="Конфиденциальность" />
+
+        <activity
+            android:name=".RankingActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:label="Рейтинги" />
+
+        <activity
             android:name=".GalleryActivity"
             android:exported="false"
             android:screenOrientation="portrait"
@@ -151,6 +166,10 @@
 
         <receiver
             android:name=".MidnightReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".ServiceRestartReceiver"
             android:exported="false" />
 
         <receiver

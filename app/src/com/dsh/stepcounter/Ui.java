@@ -40,7 +40,7 @@ public final class Ui {
     public static final int S1 = 4, S2 = 8, S3 = 12, S4 = 16, S5 = 20, S6 = 24;
 
     // шкала шрифтов: вместо разнобоя 9–15sp — четыре ступени
-    public static final float T_CAPS = 10.5f;   // подписи капсом
+    public static final float T_CAPS = 11f;      // подписи капсом (было 10,5 — мелко)
     public static final float T_BODY = 14f;     // обычный текст
     public static final float T_TITLE = 20f;    // заголовок экрана
     public static final float T_VALUE = 17f;    // числа в карточках
@@ -96,6 +96,22 @@ public final class Ui {
         return h + " ч " + m + " мин";
     }
     /** «1 цветок», «2 цветка», «5 цветов». */
+    /** Только слово для числа: «шагов», «шага», «шаг». */
+    public static String pluralWord(int n) {
+        return plural(n, "шаг", "шага", "шагов");
+    }
+
+    /** Число с тонкими пробелами между разрядами: 93 906. */
+    public static String num(int n) {
+        String s = String.valueOf(Math.abs((long) n));
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            if (i > 0 && (s.length() - i) % 3 == 0) out.append(' ');
+            out.append(s.charAt(i));
+        }
+        return (n < 0 ? "-" : "") + out;
+    }
+
     public static String flowers(int n) {
         return plural(n, "цветок", "цветка", "цветов");
     }

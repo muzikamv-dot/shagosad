@@ -1,6 +1,7 @@
 package com.dsh.stepcounter;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -27,43 +28,62 @@ public class GameState {
     public static final int SPECIES_COUNT = Species.COUNT;
 
     /**
-     * Купленное редкое семечко ждёт свободной грядки (номер вида редкого цветка,
-     * 0 — ничего не ждёт). Растущий цветок оно не трогает: прорастёт, когда
-     * текущий будет собран.
+     * Купленные редкие семечки ждут посадки в инвентаре: номер вида → сколько штук.
+     * В сад сами не сажаются — человек сам решает, когда освободится грядка.
      */
-    /** Очередь купленных редких семечек: −2, −3 … Сажаются по одному, по порядку. */
-    public final java.util.ArrayList<Integer> rareQueue = new java.util.ArrayList<>();
+    public final java.util.LinkedHashMap<Integer, Integer> rareSeeds = new java.util.LinkedHashMap<>();
 
-    /** Пустая грядка: можно посадить редкое семечко из магазина. */
+    /**
+     * Какие редкие семечки уже покупались: в магазине они больше не показываются.
+     * Каждый редкий цветок даёт одну открытку, поэтому и семечко продаётся один раз.
+     */
+    public final java.util.LinkedHashSet<Integer> rareBought = new java.util.LinkedHashSet<>();
+
+    /** Пустая грядка: можно посадить редкое семечко из инвентаря. */
     public boolean plotEmpty() {
         return !withered && weeds == 0 && stage[0] == 0;
     }
 
     /**
-     * Купить редкое семечко: на свободную грядку сажается сразу, а если
-     * цветок ещё растёт — ждёт его сбора (растущий не трогаем).
+     * Купить редкое семечко: оно уходит в инвентарь и ждёт посадки.
+     * Раньше семечко клали в невидимую очередь (`rareQueue`) и сажали сами —
+     * из-за этого в магазине карточка оставалась, а в инвентаре семечка не было.
      */
-    public void queueRare(int speciesId) {
-        if (!Rare.isRare(speciesId)) return;
-        rareQueue.add(speciesId);
-        plantQueuedIfFree();
+    public boolean buyRareSeed(int speciesId) {
+        if (!Rare.isRare(speciesId)) return false;
+        rareBought.add(speciesId);
+        rareSeeds.put(speciesId, rareSeedCount(speciesId) + 1);
+        return true;
     }
 
-    /** Посадить первое семечко из очереди, если грядка свободна. */
-    public boolean plantQueuedIfFree() {
-        if (!plotEmpty() || rareQueue.isEmpty()) return false;
-        int id = rareQueue.remove(0).intValue();
-        return plantRare(id);
+    /** Сколько таких семечек лежит в инвентаре. */
+    public int rareSeedCount(int speciesId) {
+        Integer n = rareSeeds.get(speciesId);
+        return n == null ? 0 : n.intValue();
     }
 
-    /** Сколько редких семечек ждёт очереди. */
-    public int rareQueuedCount() {
-        return rareQueue.size();
+    /** Всего редких семечек в инвентаре. */
+    public int rareSeedsTotal() {
+        int sum = 0;
+        for (Integer n : rareSeeds.values()) if (n != null) sum += n.intValue();
+        return sum;
     }
 
-    /** Ждёт ли в очереди именно этот вид. */
-    public boolean hasQueuedRare(int speciesId) {
-        return rareQueue.contains(speciesId);
+    /** Продавалось ли это семечко раньше: если да, в магазине его больше нет. */
+    public boolean rareSold(int speciesId) {
+        return rareBought.contains(speciesId);
+    }
+
+    /**
+     * Посадить редкое семечко из инвентаря. Возвращает true, если получилось:
+     * грядка должна быть свободной, а семечко — лежать в инвентаре.
+     */
+    public boolean plantRareSeed(int speciesId) {
+        if (!Rare.isRare(speciesId) || !plotEmpty() || rareSeedCount(speciesId) <= 0) return false;
+        int left = rareSeedCount(speciesId) - 1;
+        if (left <= 0) rareSeeds.remove(speciesId);
+        else rareSeeds.put(speciesId, left);
+        return plantRare(speciesId);
     }
 
     /**
@@ -77,7 +97,6 @@ public class GameState {
         withered = false;
         weeds = 0;
         neglect = 0;
-        rareQueue.clear();
         return true;
     }
 
@@ -98,6 +117,8 @@ public class GameState {
     public boolean wasReset = false;
 
     public int water = 0;
+    /** Пол для расчёта калорий: 0 — не указан, 1 — мужской, 2 — женский. */
+    public int sex = 0;
 
     // ---- праздничный ивент: своё растение, одна попытка на игрока ----
     public boolean eventSeed = false;
@@ -142,6 +163,16 @@ public class GameState {
     /** Инвентарь: тяпки и лопаты. */
     public int hoes = 0;
     public int shovels = 0;
+    /**
+     * Садовники в инвентаре. Применённый садовник замораживает текущий день
+     * до полуночи, а на следующий день даёт бонус: шаги считаются вдвое
+     * для закрытия нормы (статистика и вода при этом настоящие).
+     */
+    public int gardeners = 0;
+    /** День, который заморожен («2026-11-13»), пусто — не заморожен никто. */
+    public String frozenDay = "";
+    /** День, на который действует бонус ×2 к норме; это следующий день после заморозки. */
+    public String bonusDay = "";
     /** Последний день, за который проверяли норму. */
     public String checkDay = "";
 
@@ -150,10 +181,21 @@ public class GameState {
     public int avatarStyle = 0;
     public int avatarPalette = 0;
     public int avatarFrame = 0;
+    /** Последний выбранный портрет: нужен, когда стоит своё фото, —
+     *  в общем рейтинге фото не показываем, показываем этот портрет. */
+    public int avatarLastArt = 0;
     public final java.util.List<Integer> ownedFrames = new ArrayList<>();
     public String created = "";
 
     public int totalSteps = 0;
+    /** Сколько цветов собрано всего (для рейтинга в облаке). */
+    public int flowersCollected = 0;
+    /** Цветы за текущую неделю и месяц — отдельно, чтобы рейтинг не врал. */
+    public int flowersWeek = 0;
+    public int flowersMonth = 0;
+    /** Метки периодов: когда меняются — счётчики обнуляются. */
+    public String flowersWeekTag = "";
+    public String flowersMonthTag = "";
     public int bestDay = 0;
     public int stepsCache = 0;
     public String stepsCacheDay = "";
@@ -212,7 +254,8 @@ public class GameState {
         if (!f.exists()) {
             g.stage[0] = 0;
             g.species[0] = 0;
-            g.refreshDaily(Steps.today());
+            if (g.avatarImage >= 0) g.avatarLastArt = g.avatarImage;
+        g.refreshDaily(Steps.today());
             return g;
         }
         BufferedReader r = null;
@@ -224,39 +267,65 @@ public class GameState {
             JSONObject o = new JSONObject(sb.toString());
 
             g.water = o.optInt("water", 0);
+        g.sex = o.optInt("sex", 0);
             g.points = o.optInt("points", 0);
             g.earned = o.optInt("earned", -1);
             g.neglect = o.optInt("neglect", 0);
+        g.checkDay = o.optString("checkDay", "");
             g.weeds = o.optInt("weeds", 0);
             g.withered = o.optBoolean("withered", false);
         g.eventSeed = o.optBoolean("evSeed", false);
         g.eventStage = o.optInt("evStage", 0);
         g.eventCard = o.optBoolean("evCard", false);
-        // старое сохранение хранило только флаг волшебной ромашки
-        // очередь редких семечек: новое поле; старые сохранения хранили одно число или флаг
-        g.rareQueue.clear();
+        // редкие семечки: новый формат — инвентарь {вид: сколько} и список покупок
+        g.rareSeeds.clear();
+        g.rareBought.clear();
+        org.json.JSONArray rs = o.optJSONArray("rareSeeds");
+        if (rs != null) {
+            for (int i = 0; i < rs.length(); i++) {
+                org.json.JSONObject it = rs.optJSONObject(i);
+                if (it == null) continue;
+                int id = it.optInt("id", 0);
+                int n = it.optInt("n", 0);
+                if (Rare.isRare(id) && n > 0) g.rareSeeds.put(id, n);
+            }
+        }
+        org.json.JSONArray rb = o.optJSONArray("rareBought");
+        if (rb != null) {
+            for (int i = 0; i < rb.length(); i++) {
+                int id = rb.optInt(i, 0);
+                if (Rare.isRare(id)) g.rareBought.add(id);
+            }
+        }
+        // совместимость: старые сборки держали купленные семечки в невидимой очереди
         org.json.JSONArray rq = o.optJSONArray("rareQueue");
         if (rq != null) {
             for (int i = 0; i < rq.length(); i++) {
                 int id = rq.optInt(i, 0);
-                if (Rare.isRare(id)) g.rareQueue.add(id);
+                if (Rare.isRare(id)) {
+                    g.rareSeeds.put(id, g.rareSeedCount(id) + 1);
+                    g.rareBought.add(id);
+                }
             }
         }
         int legacyRare = o.optInt("rareQueued", o.optBoolean("magicReady", false) ? Rare.MAGIC : 0);
-        if (g.rareQueue.isEmpty() && Rare.isRare(legacyRare)) g.rareQueue.add(legacyRare);
+        if (Rare.isRare(legacyRare) && g.rareSeedCount(legacyRare) == 0) {
+            g.rareSeeds.put(legacyRare, 1);
+            g.rareBought.add(legacyRare);
+        }
         g.nyMask = o.optInt("nyMask", 0);
         g.nyPlaced = o.optString("nyPlaced", "");
         g.nyCard = o.optBoolean("nyCard", false);
             g.hoes = o.optInt("hoes", 0);
             g.shovels = o.optInt("shovels", 0);
-            g.checkDay = o.optString("checkDay", "");
-            g.goal = o.optInt("goal", 10000);
-            g.streak = o.optInt("streak", 0);
-            g.bestStreak = o.optInt("bestStreak", 0);
-            g.lastWaterDay = o.optString("lastWaterDay", "");
-            g.wateredToday = o.optInt("wateredToday", 0);
-            g.wateredTotal = o.optInt("wateredTotal", 0);
-            g.gameVersion = o.optInt("gameVersion", 0);
+            g.gardeners = o.optInt("gardeners", 0);
+            g.frozenDay = o.optString("frozenDay", "");
+            g.bonusDay = o.optString("bonusDay", "");
+            // совместимость: раньше заморозка была «запасом дней», теперь это состояние дня
+            if (o.optInt("gardenFreeze", 0) > 0 && g.frozenDay.isEmpty()) {
+                g.frozenDay = Steps.today();
+                g.bonusDay = shiftDay(Steps.today(), 1);
+            }
             g.flowersToday = o.optInt("flowersToday", 0);
             g.flowersTotal = o.optInt("flowersTotal", 0);
             g.weekStart = o.optInt("weekStart", 0);
@@ -281,6 +350,8 @@ public class GameState {
                 g.stage[i] = st != null ? st.optInt(i, 0) : 0;
                 g.species[i] = sp != null ? sp.optInt(i, i % 5) : i % 5;
             }
+            // если редкий цветок уже растёт, семечко когда-то купили — в магазине его нет
+            if (Rare.isRare(g.species[0])) g.rareBought.add(g.species[0]);
 
             g.waterDay = o.optString("waterDay", "");
             g.stepsAtWater = o.optInt("stepsAtWater", 0);
@@ -291,6 +362,7 @@ public class GameState {
         g.avatarStyle = o.optInt("avatarStyle", 0);
             g.avatarPalette = o.optInt("avatarPalette", 0);
             g.avatarFrame = o.optInt("avatarFrame", 0);
+        g.avatarLastArt = o.optInt("avatarLastArt", 0);
             JSONArray fr = o.optJSONArray("ownedFrames");
             if (fr != null) for (int i = 0; i < fr.length(); i++) g.ownedFrames.add(fr.optInt(i));
 
@@ -306,6 +378,11 @@ public class GameState {
 
             g.created = o.optString("created", "");
             g.totalSteps = o.optInt("totalSteps", 0);
+        g.flowersCollected = o.optInt("flowersCollected", 0);
+        g.flowersWeek = o.optInt("flowersWeek", 0);
+        g.flowersMonth = o.optInt("flowersMonth", 0);
+        g.flowersWeekTag = o.optString("flowersWeekTag", "");
+        g.flowersMonthTag = o.optString("flowersMonthTag", "");
             g.bestDay = o.optInt("bestDay", 0);
             g.stepsCache = o.optInt("stepsCache", 0);
             g.stepsCacheDay = o.optString("stepsCacheDay", "");
@@ -331,6 +408,8 @@ public class GameState {
                             it.optString("wish", "")));
                 }
             }
+            // собранный редкий цветок значит, что семечко уже куплено: в магазине не показываем
+            for (Card c : g.cards) if (c != null && Rare.isRare(c.species)) g.rareBought.add(c.species);
 
             JSONArray bl = o.optJSONArray("bloomed");
             if (bl != null) for (int i = 0; i < bl.length(); i++) g.bloomed.add(bl.optInt(i));
@@ -371,13 +450,21 @@ public class GameState {
             g.save(ctx);
         }
 
+        if (g.avatarImage >= 0) g.avatarLastArt = g.avatarImage;
         g.refreshDaily(Steps.today());
+        // счётчик собранных цветов появился позже коллекции: если он ещё ноль,
+        // а коллекция не пустая — берём число открытых видов, чтобы человек
+        // не оказался с нулём в рейтинге
+        if (g.flowersCollected == 0 && !g.bloomed.isEmpty()) {
+            g.flowersCollected = g.bloomed.size();
+        }
         return g;
     }
 
     /** Обнулить игровой прогресс, сохранив ник и аватар. */
     public void resetProgress() {
         water = 0;
+        sex = 0;
         points = 0;
         earned = 0;
         streak = 0;
@@ -396,7 +483,8 @@ public class GameState {
         eventSeed = false;
         eventStage = 0;
         eventCard = false;
-        rareQueue.clear();
+        rareSeeds.clear();
+        rareBought.clear();
         nyMask = 0;
         nyPlaced = "";
         nyCard = false;
@@ -430,7 +518,9 @@ public class GameState {
         withered = false;
         hoes = 0;
         shovels = 0;
-        checkDay = "";
+        gardeners = 0;
+        frozenDay = "";
+        bonusDay = "";
     }
 
     /** Ник при первом запуске: «Садовник #2841». */
@@ -471,6 +561,17 @@ public class GameState {
     public static int questTarget(int goal) {
         int t = Math.round(goal * 0.8f / 100f) * 100;
         return Math.max(1000, Math.min(90000, t));
+    }
+
+    /**
+     * После восстановления копии: не начислять воду за шаги, которые уже были
+     * оплачены в копии. Иначе человек получает лейки второй раз за тот же день.
+     */
+    public void alignWaterBaseline(int stepsToday) {
+        if (stepsToday > stepsMark) {
+            stepsMark = stepsToday;
+            waterProgress = 0;
+        }
     }
 
     /** Смена нормы: цену лейки пересчитываем, воду задним числом не начисляем. */
@@ -539,25 +640,36 @@ public class GameState {
         try {
             JSONObject o = new JSONObject();
             o.put("water", water);
+        o.put("sex", sex);
         o.put("evSeed", eventSeed);
         o.put("evStage", eventStage);
         o.put("evCard", eventCard);
-        org.json.JSONArray rqOut = new org.json.JSONArray();
-        for (int i = 0; i < rareQueue.size(); i++) rqOut.put(rareQueue.get(i).intValue());
-        o.put("rareQueue", rqOut);
-        o.put("rareQueued", rareQueue.isEmpty() ? 0 : rareQueue.get(0).intValue());
-        o.put("magicReady", rareQueue.contains(Rare.MAGIC));   // совместимость со старыми сборками
+        // редкие семечки лежат в инвентаре: {вид: сколько} + список уже купленных
+        org.json.JSONArray rsOut = new org.json.JSONArray();
+        for (java.util.Map.Entry<Integer, Integer> e : rareSeeds.entrySet()) {
+            org.json.JSONObject item = new org.json.JSONObject();
+            item.put("id", e.getKey().intValue());
+            item.put("n", e.getValue().intValue());
+            rsOut.put(item);
+        }
+        o.put("rareSeeds", rsOut);
+        org.json.JSONArray rbOut = new org.json.JSONArray();
+        for (Integer id : rareBought) rbOut.put(id.intValue());
+        o.put("rareBought", rbOut);
         o.put("nyMask", nyMask);
         o.put("nyPlaced", nyPlaced);
         o.put("nyCard", nyCard);
             o.put("points", points);
             o.put("earned", earned);
             o.put("neglect", neglect);
+        o.put("checkDay", checkDay);
             o.put("weeds", weeds);
             o.put("withered", withered);
             o.put("hoes", hoes);
             o.put("shovels", shovels);
-            o.put("checkDay", checkDay);
+            o.put("gardeners", gardeners);
+            o.put("frozenDay", frozenDay);
+            o.put("bonusDay", bonusDay);
             o.put("goal", goal);
             o.put("streak", streak);
             o.put("bestStreak", bestStreak);
@@ -578,9 +690,15 @@ public class GameState {
         o.put("avatarStyle", avatarStyle);
             o.put("avatarPalette", avatarPalette);
             o.put("avatarFrame", avatarFrame);
+        o.put("avatarLastArt", avatarLastArt);
             o.put("ownedFrames", new JSONArray(ownedFrames));
             o.put("created", created);
             o.put("totalSteps", totalSteps);
+        o.put("flowersCollected", flowersCollected);
+        o.put("flowersWeek", flowersWeek);
+        o.put("flowersMonth", flowersMonth);
+        o.put("flowersWeekTag", flowersWeekTag);
+        o.put("flowersMonthTag", flowersMonthTag);
             o.put("bestDay", bestDay);
             o.put("stepsCache", stepsCache);
             o.put("stepsCacheDay", stepsCacheDay);
@@ -631,7 +749,8 @@ public class GameState {
             q1Target = questTarget(goal);
             q1Done = 0; q1Claimed = 0;
             q2Done = 0; q2Claimed = 0;
-            q3Done = 0; q3Claimed = 0;
+            // q3 — недельное задание: его флаг сбрасывается только вместе с неделей,
+            // иначе 700 очков можно было получать каждый день до конца недели
             wateredToday = 0;
             flowersToday = 0;
         }
@@ -652,10 +771,21 @@ public class GameState {
         }
     }
 
-    /** Номер понедельника текущей недели. */
+    /**
+     * Номер понедельника недели, в которую попадает день.
+     *
+     * День недели берётся из самой даты, а не из «сегодня»: раньше здесь стоял
+     * `Calendar.getInstance()`, и для любой даты, кроме сегодняшней, граница
+     * недели считалась неверно.
+     */
     public static int weekStartOf(String day) {
         int d = dayNumber(day);
         java.util.Calendar c = java.util.Calendar.getInstance();
+        try {
+            SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+            java.util.Date parsed = f.parse(day);
+            if (parsed != null) c.setTime(parsed);
+        } catch (Exception ignored) { }
         int dow = c.get(java.util.Calendar.DAY_OF_WEEK); // 1 = воскресенье
         int mondayIndex = (dow + 5) % 7;                  // понедельник = 0
         return d - mondayIndex;
@@ -731,9 +861,11 @@ public class GameState {
     }
 
     // ---------------- сорняки, увядание, инструменты ----------------
-    /** Цена инструментов: тяпка 100, лопата 200 очков — доступно с первых дней. */
+    /** Цена инструментов: тяпка 100, лопата 200 — доступно с первых дней. */
     public static final int HOE_PRICE = 100;
     public static final int SHOVEL_PRICE = 200;
+    /** Садовник: дороже инструментов, зато снимает штраф за пропущенный день. */
+    public static final int GARDENER_PRICE = 250;
     /** С какого пропущенного дня подряд цветок засыхает. */
     static final int WITHER_AFTER = 3;
     /** После стольких дней отсутствия лопата выдаётся бесплатно, чтобы не запирать. */
@@ -754,8 +886,11 @@ public class GameState {
     /** Сорняки на грядке: лейка копится вдвое дольше. */
     public boolean waterHalved() { return !withered && weeds > 0; }
 
-    /** Сорняки и засыхание блокируют и полив, и сбор. */
-    public boolean plotBlocked() { return withered || weeds > 0; }
+    /** Пока грядка заморожена, сорняки и засыхание блокируют полив и сбор. */
+    public boolean plotBlocked() { return withered || weeds > 0 || isFrozenToday(); }
+
+    /** Заморозка садовником: действия с цветком запрещены до полуночи. */
+    public boolean freezeActive() { return isFrozenToday(); }
 
     /** Срезать один сорняк тяпкой. */
     public boolean cutWeed() {
@@ -791,6 +926,48 @@ public class GameState {
         return true;
     }
 
+    /**
+     * Купить садовника. В магазине их сколько угодно, каждый даёт один день
+     * заморозки после применения на грядку.
+     */
+    public boolean buyGardener() {
+        if (points < GARDENER_PRICE) return false;
+        points -= GARDENER_PRICE;
+        gardeners++;
+        return true;
+    }
+
+    /**
+     * Применить садовника: заморозить текущий день до полуночи.
+     * Садовник уходит из инвентаря, следующий день получает бонус ×2 к норме.
+     */
+    public boolean applyGardener() {
+        if (gardeners <= 0) return false;
+        if (isFrozenToday()) return false;         // сегодня уже морозили
+        gardeners--;
+        frozenDay = Steps.today();
+        bonusDay = shiftDay(Steps.today(), 1);
+        return true;
+    }
+
+    /** Сегодня грядка заморожена? Тогда все действия с цветком запрещены. */
+    public boolean isFrozenToday() {
+        return frozenDay != null && frozenDay.equals(Steps.today());
+    }
+
+    /** Сегодня действует бонус ×2 к закрытию нормы (день после заморозки)? */
+    public boolean bonusToday() {
+        return bonusDay != null && bonusDay.equals(Steps.today());
+    }
+
+    /**
+     * Шаги для закрытия дневной нормы: в бонусный день считаем их вдвое.
+     * Для статистики, скорости и воды всегда берём настоящие шаги.
+     */
+    public int stepsForGoal(int realSteps) {
+        return bonusToday() ? realSteps * 2 : realSteps;
+    }
+
     /** Сдвинуть день на delta: "2026-10-26" + 1 = "2026-10-27". */
     static String shiftDay(String day, int delta) {
         try {
@@ -810,11 +987,31 @@ public class GameState {
      * нет — появляются сорняки (по одному на день, максимум два), а с третьего
      * дня подряд цветок засыхает. Возвращает true, если что-то изменилось.
      */
+    /**
+     * Одноразовая починка после ошибки 20.11.2026: шаги, сделанные до полуночи,
+     * раньше целиком уходили следующему дню. Если вчера из-за этого был
+     * засчитан пропуск, а теперь шагов хватает, снимаем один пропуск и сорняк.
+     */
+    public void repairMidnightSteps(Context ctx) {
+        SharedPreferences p = Steps.prefs(ctx);
+        if (p.getBoolean("midnight_fix_113", false)) return;
+        p.edit().putBoolean("midnight_fix_113", true).apply();
+
+        int[] last = Steps.lastDays(ctx, 2);
+        int yesterday = last.length > 1 ? last[0] : 0;
+        int effective = shiftDay(Steps.today(), -1).equals(bonusDay) ? yesterday * 2 : yesterday;
+        if (effective >= goal && neglect > 0) {
+            neglect = Math.max(0, neglect - 1);
+            if (!withered) weeds = Math.min(2, neglect);
+            save(ctx);
+        }
+    }
+
     public boolean checkMissedDays(Context ctx) {
         String today = Steps.today();
-        if (checkDay.isEmpty()) {          // новое сохранение: прошлое не судим
-            checkDay = shiftDay(today, -1);
-            return false;
+        if (checkDay.isEmpty()) {          // новое сохранение: прошлое не судим,
+            checkDay = shiftDay(today, -1);  // но день проверки надо сохранить,
+            return true;                     // иначе он так и останется пустым
         }
         if (checkDay.equals(today)) return false;
 
@@ -824,7 +1021,15 @@ public class GameState {
         for (int guard = 0; guard < 400 && !d.equals(today); guard++) {
             Integer v = days.get(d);
             int steps = v == null ? 0 : v;
-            if (steps >= goal) {
+            // замороженный садовником день штрафов не приносит
+            if (d.equals(frozenDay)) {
+                d = shiftDay(d, 1);
+                continue;
+            }
+            // день после заморозки: шаги для нормы считаются вдвое,
+            // но в статистике и для воды остаются настоящими
+            int effective = d.equals(bonusDay) ? steps * 2 : steps;
+            if (effective >= goal) {
                 if (neglect != 0) { neglect = 0; changed = true; }
             } else {
                 neglect++;
@@ -853,6 +1058,7 @@ public class GameState {
 
     /** Тест-инструмент: сымитировать пропущенный день. */
     public void simulateMiss() {
+        if (isFrozenToday()) return;      // замороженный день штрафа не даёт
         neglect++;
         if (!withered) {
             if (neglect >= WITHER_AFTER) { withered = true; weeds = 0; stage[0] = 0; }
@@ -862,13 +1068,14 @@ public class GameState {
 
     /**
      * Забрать выполненные задания: три дневных и недельное.
-     * Суммы совпадают с тем, что написано на экране заданий.
+     * Суммы совпадают с тем, что написано на экране заданий:
+     * шаги — 100, цветок за день — 100, неделя из 7 цветов — 700.
      */
     public boolean questsClaimed() {
         int add = 0;
-        if (q1Done >= q1Target && q1Claimed == 0) { q1Claimed = 1; add += 60; }
-        if (flowersToday >= 1 && q2Claimed == 0) { q2Claimed = 1; add += 40; }
-        if (weekFlowers >= 7 && q3Claimed == 0) { q3Claimed = 1; add += 300; }
+        if (q1Done >= q1Target && q1Claimed == 0) { q1Claimed = 1; add += 100; }
+        if (flowersToday >= 1 && q2Claimed == 0) { q2Claimed = 1; add += 100; }
+        if (weekFlowers >= 7 && q3Claimed == 0) { q3Claimed = 1; add += 700; }
         if (add > 0) { earn(add); return true; }
         return false;
     }
@@ -878,6 +1085,10 @@ public class GameState {
     public void collect() {
         if (plotBlocked()) return;         // сначала прополоть или перекопать
         int sp = species[0];
+        flowersCollected++;
+        resetFlowerPeriods();
+        flowersWeek++;
+        flowersMonth++;
         if (!bloomed.contains(sp)) bloomed.add(sp);
         earn(100);
         flowersToday++;
@@ -897,8 +1108,9 @@ public class GameState {
                 rare ? Rare.wish(sp) : Species.wish(sp)));
 
         stage[0] = 0;
-        // приоритет редким: купленное семечко всегда раньше случайного цветка
-        species[0] = rareQueue.isEmpty() ? nextSpecies() : rareQueue.remove(0).intValue();
+        // редкие семечки больше не подставляются сами: они ждут в инвентаре,
+        // пока человек сам не посадит их на свободную грядку
+        species[0] = nextSpecies();
         questsClaimed();   // задания по цветку и неделе закрываются сразу
     }
 
@@ -966,6 +1178,23 @@ public class GameState {
         }
         questsClaimed();
         return true;
+    }
+
+    /** Если наступила новая неделя или месяц — счётчики цветов начинаются с нуля. */
+    public void resetFlowerPeriods() {
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        int week = c.get(java.util.Calendar.WEEK_OF_YEAR);
+        int year = c.get(java.util.Calendar.YEAR);
+        String weekTag = year + "-W" + (week < 10 ? "0" + week : String.valueOf(week));
+        String monthTag = year + "-" + (c.get(java.util.Calendar.MONTH) + 1);
+        if (!weekTag.equals(flowersWeekTag)) {
+            flowersWeekTag = weekTag;
+            flowersWeek = 0;
+        }
+        if (!monthTag.equals(flowersMonthTag)) {
+            flowersMonthTag = monthTag;
+            flowersMonth = 0;
+        }
     }
 
     /** Список открытых видов — по максимальной стадии. */

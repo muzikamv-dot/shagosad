@@ -64,6 +64,18 @@ final class Steps {
         return new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date(wallMillis));
     }
 
+    /** Час суток с учётом пояса, записанного в строке журнала. */
+    static int hourOf(long wallMillis, long offsetMinutes) {
+        long shifted = wallMillis + offsetMinutes * 60000L;
+        int h = (int) ((shifted / 3600000L) % 24L);
+        return h < 0 ? h + 24 : h;
+    }
+
+    static int hourOf(long[] e) {
+        long offset = e.length >= 5 ? e[4] : zoneOffset(e[0]);
+        return hourOf(e[0], offset);
+    }
+
     static boolean hasSensor(Context ctx) {
         SensorManager sm = (SensorManager) ctx.getSystemService(Context.SENSOR_SERVICE);
         return sm != null && sm.getDefaultSensor(Sensor.TYPE_STEP_COUNTER) != null;
@@ -71,6 +83,15 @@ final class Steps {
 
     static SharedPreferences prefs(Context ctx) {
         return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    /**
+     * Фоновая служба включена по умолчанию. Раньше её надо было включать
+     * вручную, и до этого шаги в фоне не читались вовсе.
+     */
+    static boolean serviceEnabled(Context ctx) {
+        SharedPreferences p = prefs(ctx);
+        return !p.contains(KEY_SERVICE) || p.getBoolean(KEY_SERVICE, true);
     }
 
     /** Разница в днях между двумя датами yyyy-MM-dd (b − a). */
@@ -197,15 +218,25 @@ final class Steps {
         StringBuilder sb = new StringBuilder();
         if (jumped) sb.append("# скачок времени ").append(lastDay).append(" -> ")
                 .append(today).append('\n');
-        long lastKept = 0;
+        // Прореживаем журнал, но держим в каждой минуте ДВЕ точки: первую
+        // (базу для дельты) и последнюю (свежий raw). Раньше «замена предыдущей»
+        // шла цепочкой: при замерах раз в 2 секунды каждая новая запись заменяла
+        // предыдущую, и весь журнал схлопывался в одну строку. dailyFrom для
+        // одной строки возвращает 0 — шаги пропадали, хотя датчик их отдавал.
+        long lastBucket = Long.MIN_VALUE;
+        int bucketKept = 0;
         int lastStart = -1;
         for (long[] e : entries) {
             if (!jumped && e[0] < cutoff) continue;
-            // прореживаем до одного замера в минуту. Слишком частые не выбрасываем,
-            // а заменяем предыдущую запись свежей — так в журнале всегда самое
-            // актуальное значение, но файл не пухнет на тысячи строк в сутки.
-            if (lastKept != 0 && e[0] - lastKept < 60000L) {
+            long bucket = e[0] / 60000L;
+            if (bucket != lastBucket) {
+                lastBucket = bucket;
+                bucketKept = 0;
+            } else if (bucketKept >= 2) {
+                // в этой минуте уже есть первая и последняя точки — обновляем
+                // только последнюю, базу не трогаем
                 sb.setLength(lastStart);
+                bucketKept--;
             }
             lastStart = sb.length();
             sb.append(e[0]).append('|').append(e[1]).append('|').append(e[2]);
@@ -215,7 +246,7 @@ final class Steps {
                 sb.append('|').append(e[3]).append('|').append(e[4]);
             }
             sb.append('\n');
-            lastKept = e[0];
+            bucketKept++;
         }
         writeAtomically(new File(ctx.getFilesDir(), FILE), sb.toString());
     }
@@ -319,9 +350,13 @@ final class Steps {
 
     /** Разложить журнал по дням. Ключи отсортированы по дате. */
     static LinkedHashMap<String, Integer> dailySteps(Context ctx) {
+        return dailyFrom(load(ctx));
+    }
+
+    /** Та же раскладка по дням, но без файла и Context — для проверок. */
+    static LinkedHashMap<String, Integer> dailyFrom(List<long[]> list) {
         LinkedHashMap<String, Integer> days = new LinkedHashMap<>();
-        List<long[]> list = load(ctx);
-        if (list.size() < 2) return days;
+        if (list == null || list.size() < 2) return days;
 
         for (int i = 1; i < list.size(); i++) {
             long[] a = list.get(i - 1);
@@ -347,10 +382,14 @@ final class Steps {
                 continue;
             }
 
-            // Длинный разрыв (телефон спал, VPN держал сеть, замеров не было) —
-            // не размазываем шаги по времени, относим целиком туда, где замер.
+            // Длинный разрыв через полночь: телефон спал, промежуточных замеров нет.
+            // Если разрыв начался днём или вечером, а закончился утром, шаги
+            // сделаны до сна — оставляем их прошлому дню. Раньше весь прирост
+            // уходил дню последнего замера: 20.11.2026 так «переехали» 533 шага
+            // с 19-го на 20-е (за вчера недобор, за сегодня лишнее).
             if (t2 - t1 > 2 * 3600000L) {
-                add(days, dayB, (int) delta);
+                boolean beforeMidnight = hourOf(a) >= 12 && hourOf(b) < 12;
+                add(days, beforeMidnight ? dayA : dayB, (int) delta);
                 continue;
             }
 
@@ -402,6 +441,45 @@ final class Steps {
             cal.add(java.util.Calendar.DAY_OF_YEAR, 1);
         }
         return out;
+    }
+
+    /** Сдвинуть дату на n дней (для диагностики и расчётов недели). */
+    static String shiftDayPublic(String day, int delta) {
+        try {
+            java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US);
+            java.util.Date d = f.parse(day);
+            java.util.Calendar c = java.util.Calendar.getInstance();
+            c.setTime(d);
+            c.add(java.util.Calendar.DAY_OF_YEAR, delta);
+            return f.format(c.getTime());
+        } catch (Exception e) {
+            return day;
+        }
+    }
+
+    /** Сумма шагов с понедельника этой недели по сегодня включительно. */
+    static int stepsThisWeek(Context ctx) {
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        int dow = (cal.get(java.util.Calendar.DAY_OF_WEEK) + 5) % 7;   // понедельник = 0
+        int[] last = lastDays(ctx, dow + 1);
+        int sum = 0;
+        for (int v : last) sum += Math.max(0, v);
+        return sum;
+    }
+
+    /** Сколько дней недели уже прошло (включая сегодня): 1 — понедельник. */
+    static int daysThisWeek() {
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        return ((cal.get(java.util.Calendar.DAY_OF_WEEK) + 5) % 7) + 1;
+    }
+
+    /** Сумма шагов с 1-го числа этого месяца по сегодня. */
+    static int stepsThisMonth(Context ctx) {
+        int day = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_MONTH);
+        int[] last = lastDays(ctx, day);
+        int sum = 0;
+        for (int v : last) sum += Math.max(0, v);
+        return sum;
     }
 
     /**
@@ -608,9 +686,41 @@ final class Steps {
      * Формула грубая: не учитывает темп, рельеф, возраст — поэтому в приложении
      * всегда пишем «≈» и предупреждаем, что это оценка.
      */
+    /**
+     * Оценка калорий: базово 0,045 ккал на шаг при 70 кг, дальше поправки на вес,
+     * рост и пол. Мужской обмен выше, женский ниже — коэффициенты из типовых
+     * расчётов, поэтому в приложении всегда стоит «≈».
+     */
     static int calories(Context ctx, int steps) {
-        return Math.round(steps * 0.045f * weightKg(ctx) / 70f);
+        GameState g = null;
+        try {
+            g = GameState.load(ctx);
+        } catch (Exception ignored) { }
+        float weight = Math.max(30, Math.min(200, weightKg(ctx)));
+        int hPref = prefs(ctx).getInt("height_cm", 170);
+        float height = Math.max(120, Math.min(220, hPref));
+        int sex = g == null ? 0 : g.sex;
+        float sexK = sex == 1 ? 1.07f : sex == 2 ? 0.93f : 1f;
+        float heightK = 1f + (height - 170f) / 600f;
+        return Math.round(steps * 0.045f * (weight / 70f) * sexK * heightK);
     }
+    // ---- кэш «шаги сегодня»: читать только вместе с днём ----
+
+    /**
+     * Шаги из кэша «сегодня», но только если кэш действительно за сегодняшний день.
+     *
+     * Кэш обновляет только сеанс с датчиком (`refreshToday`). После полуночи до
+     * первого сеанса в нём лежит вчерашнее число, а `KEY_DAY` — вчерашняя дата.
+     * Если отдать это число как сегодняшние шаги, вода начисляется второй раз за
+     * уже оплаченные шаги: 13.11.2026 так пришло 10 леек за 10 563 шага 12 ноября
+     * (`MainActivity.refreshAll()` читает кэш до `runSync()`).
+     */
+    static int cachedToday(Context ctx) {
+        SharedPreferences p = prefs(ctx);
+        if (!today().equals(p.getString(KEY_DAY, ""))) return 0;
+        return p.getInt(KEY_STEPS, 0);
+    }
+
     /** Пересчитать кэш «шаги сегодня» — его читают виджет и уведомление. */
     static int refreshToday(Context ctx) {        // при смене суток закрепляем итоги прошлых дней в настройках.
         // Отдельный ключ: last_day обновляется ещё и при сохранении журнала.

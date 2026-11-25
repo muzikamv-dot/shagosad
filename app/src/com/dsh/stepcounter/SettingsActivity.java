@@ -1,6 +1,7 @@
 package com.dsh.stepcounter;
 
 import android.app.Activity;
+import android.app.AlarmManager;
 import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.DialogInterface;
@@ -16,6 +17,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.provider.Settings;
 import android.text.InputType;
 import android.util.TypedValue;
@@ -24,6 +26,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -49,6 +52,7 @@ public class SettingsActivity extends Activity {
     private Button weatherButton;
     private LinearLayout testBox;
     private ScrollView scroll;
+
     private void chooseTheme() {
         new AlertDialog.Builder(this)
                 .setTitle("Тема оформления")
@@ -137,6 +141,26 @@ public class SettingsActivity extends Activity {
     }
 
     private void confirmRestore(final String text) {
+        // если копия сделана в более новой сборке — сначала объясняем, чем это грозит
+        String warn = Backup.newerBackupWarning(this, text);
+        if (warn != null) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Копия из новой версии")
+                    .setMessage(warn)
+                    .setPositiveButton("Всё равно восстановить",
+                            new DialogInterface.OnClickListener() {
+                                @Override public void onClick(DialogInterface d, int w) {
+                                    restoreNow(text);
+                                }
+                            })
+                    .setNegativeButton("Отмена", null)
+                    .show();
+            return;
+        }
+        restoreNow(text);
+    }
+
+    private void restoreNow(final String text) {
         new AlertDialog.Builder(this)
                 .setTitle("Восстановить прогресс?")
                 .setMessage("Текущий сад и журнал шагов будут заменены копией из файла.")
@@ -148,6 +172,14 @@ public class SettingsActivity extends Activity {
                                     "Файл не похож на копию ШагоСада", Toast.LENGTH_LONG).show();
                             return;
                         }
+                        // чтобы за уже оплаченные шаги не начислились лейки второй раз
+                        try {
+                            GameState fresh = GameState.load(SettingsActivity.this);
+                            int today = Steps.cachedToday(SettingsActivity.this);
+                            fresh.alignWaterBaseline(today);
+                            fresh.save(SettingsActivity.this);
+                        } catch (Exception ignored) { }
+
                         // показываем, что именно легло из копии
                         try {
                             GameState check = GameState.load(SettingsActivity.this);
@@ -171,9 +203,7 @@ public class SettingsActivity extends Activity {
     }
 
     private Button goalButton;
-    private Button heightButton;
-    private Button weightButton;
-    private Button caloriesButton;
+    private Button bodyButton;
     private Button themeButton;
     private Button serviceButton;
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -289,30 +319,20 @@ public class SettingsActivity extends Activity {
         });
         box.addView(goalButton);
 
-        // рост нужен только для расстояния и не влияет на игру
-        heightButton = row("Рост для длины шага: " + Steps.prefs(this).getInt("height_cm", 170) + " см");
-        heightButton.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { editHeight(); }
+        // рост, вес, пол и калории — в одном окне: так понятнее, чем три отдельные строки
+        bodyButton = row(bodySummary());
+        bodyButton.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { editBody(); }
         });
-        box.addView(heightButton);
-
-        weightButton = row("Вес для калорий: " + Steps.weightKg(this) + " кг");
-        weightButton.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { editWeight(); }
-        });
-        box.addView(weightButton);
-
-        caloriesButton = row(Steps.showCalories(this) ? "Калории: показывать" : "Калории: скрыты");
-        caloriesButton.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { toggleCalories(); }
-        });
-        box.addView(caloriesButton);
+        box.addView(bodyButton);
 
         themeButton = row("Тема: " + Theme.name());
         themeButton.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { chooseTheme(); }
         });
         box.addView(themeButton);
+
+        // как рисуется кольцо шагов на главной: плоское / объём / текстура / 3D
 
         Button reset = row("Сбросить прогресс");
         reset.setTextColor(0xFFFF9A8A);
@@ -329,9 +349,17 @@ public class SettingsActivity extends Activity {
         });
         box.addView(perm);
 
-        Button battery = row("Работа в фоне (исключение батареи)");
+        Button exact = row("Точные будильники: "
+                + (AlarmScheduler.exactAllowed(this) ? "разрешены" : "нет"));
+        exact.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { openExactAlarmSettings(); }
+        });
+        box.addView(exact);
+
+        Button battery = row("Энергосбережение: "
+                + (AlarmScheduler.batteryUnrestricted(this) ? "без ограничений" : "ограничено"));
         battery.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { askBattery(); }
+            @Override public void onClick(View v) { openBatterySettings(); }
         });
         box.addView(battery);
 
@@ -360,28 +388,6 @@ public class SettingsActivity extends Activity {
 
         // новогодний ивент: афиша, включение и сброс — только в меню разработчика
         testBox.addView(section("НОВЫЙ ГОД"));
-        // ТЕСТ обновления: скачивает последний APK и открывает установщик,
-        // даже если версия на GitHub не новее — чтобы проверить цепочку целиком.
-        Button updateTest = row("Скачать обновление (тест)");
-        updateTest.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                Toast.makeText(SettingsActivity.this, "Скачиваю последний APK…", Toast.LENGTH_SHORT).show();
-                Updater.check(SettingsActivity.this, new Updater.Callback() {
-                    @Override public void done(Updater.Info info, boolean available, String error) {
-                        Updater.Info target = info != null ? info
-                                : new Updater.Info("latest", 0,
-                                        "https://github.com/muzikamv-dot/shagosad/releases/latest/download/ShagoSad.apk");
-                        Updater.downloadAndInstall(SettingsActivity.this, target, new Runnable() {
-                            @Override public void run() {
-                                Toast.makeText(SettingsActivity.this,
-                                        "Не удалось скачать APK", Toast.LENGTH_LONG).show();
-                            }
-                        });
-                    }
-                });
-            }
-        });
-        testBox.addView(updateTest);
         final Button decorBtn = row(decorLabel());
         testBox.addView(decorBtn);
         decorBtn.setOnClickListener(new View.OnClickListener() {
@@ -452,8 +458,7 @@ public class SettingsActivity extends Activity {
         });
         testBox.addView(weatherDev);
 
-        boolean serviceOn = getSharedPreferences(Steps.PREFS, MODE_PRIVATE)
-                .getBoolean(Steps.KEY_SERVICE, false);
+        boolean serviceOn = Steps.serviceEnabled(this);
         serviceButton = row("Фоновая служба: " + (serviceOn ? "включена" : "выключена"));
         serviceButton.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { toggleService(); }
@@ -528,6 +533,36 @@ public class SettingsActivity extends Activity {
         });
         testBox.addView(weatherStatus);
 
+        // тест внешнего вида кольца: показать его без прогресса
+        Button ringZero = row(ringZeroLabel());
+        ringZero.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                boolean now = !getSharedPreferences(Steps.PREFS, MODE_PRIVATE)
+                        .getBoolean("ring_test_zero", false);
+                getSharedPreferences(Steps.PREFS, MODE_PRIVATE).edit()
+                        .putBoolean("ring_test_zero", now).apply();
+                startActivity(new Intent(SettingsActivity.this, MainActivity.class));
+                finish();
+            }
+        });
+        testBox.addView(ringZero);
+
+        // почему (не) появился сорняк: видно серию пропусков, заморозку и шаги за вчера
+        Button weedsInfo = row(weedsDiagnostic());
+        weedsInfo.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Toast.makeText(SettingsActivity.this, weedsDiagnostic(), Toast.LENGTH_LONG).show();
+            }
+        });
+        testBox.addView(weedsInfo);
+
+        // расход бесплатных лимитов Яндекса: свежие цифры с сервера
+        Button limits = row("Лимиты Яндекс Облака: показать");
+        limits.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showCloudLimits(); }
+        });
+        testBox.addView(limits);
+
         // посмотреть награждение ещё раз, не зарабатывая медаль
         Button achAgain = row("Показать награды заново (тест)");
         achAgain.setOnClickListener(new View.OnClickListener() {
@@ -553,6 +588,13 @@ public class SettingsActivity extends Activity {
         testBox.addView(again);
 
         // для проверки сорняков и увядания без ожидания дней
+        // самопроверка заморозки: применяет садовника, пробует «пропуск» и откатывает всё назад
+        Button checkFreeze = row("Проверить заморозку (тест)");
+        checkFreeze.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { checkFreeze(); }
+        });
+        testBox.addView(checkFreeze);
+
         Button skipDay = row("Смоделировать пропуск дня (тест)");
         skipDay.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
@@ -599,6 +641,31 @@ public class SettingsActivity extends Activity {
         });
         testBox.addView(addWater10);
 
+        // садовник бесплатно: проверять заморозку, не тратя очки владельца
+        Button giveGardener = row("Выдать садовника (тест)");
+        giveGardener.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                game.gardeners++;
+                game.save(SettingsActivity.this);
+                Toast.makeText(SettingsActivity.this,
+                        "Садовников в инвентаре: " + game.gardeners,
+                        Toast.LENGTH_SHORT).show();
+            }
+        });
+        testBox.addView(giveGardener);
+
+        // снять заморозку: чтобы тестовый лёд не висел до полуночи
+        Button unfreeze = row("Снять заморозку (тест)");
+        unfreeze.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                game.frozenDay = "";
+                game.bonusDay = "";
+                game.save(SettingsActivity.this);
+                Toast.makeText(SettingsActivity.this, "Заморозка снята", Toast.LENGTH_SHORT).show();
+            }
+        });
+        testBox.addView(unfreeze);
+
         Button addWater100 = row("Начислить 100 леек (тест)");
         addWater100.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
@@ -610,17 +677,16 @@ public class SettingsActivity extends Activity {
         });
         testBox.addView(addWater100);
 
-        // выдать конкретное редкое семечко: чтобы проверять очередь и не тратить очки
+        // выдать конкретное редкое семечко: чтобы проверять инвентарь и не тратить очки
         for (final int rareId : Rare.ALL) {
             Button giveRare = row("Выдать семечко: " + Rare.name(rareId) + " (тест)");
             giveRare.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) {
-                    game.queueRare(rareId);
+                    game.buyRareSeed(rareId);   // бесплатно, кладёт в инвентарь
                     game.save(SettingsActivity.this);
-                    String msg = game.rareQueuedCount() > 0
-                            ? "В очереди семечек: " + game.rareQueuedCount()
-                            : "Семечко посажено в саду";
-                    Toast.makeText(SettingsActivity.this, msg, Toast.LENGTH_SHORT).show();
+                    Toast.makeText(SettingsActivity.this,
+                            "Семечек в инвентаре: " + game.rareSeedsTotal(),
+                            Toast.LENGTH_SHORT).show();
                 }
             });
             testBox.addView(giveRare);
@@ -648,15 +714,20 @@ public class SettingsActivity extends Activity {
         // О ПРИЛОЖЕНИИ
         box.addView(section("О ПРИЛОЖЕНИИ"));
 
-        // в версии для магазина обновления приходят из RuStore, кнопка не нужна
-        if (!AppFlavor.STORE) {
-            updateBtn = row("Обновление: проверить");
-            box.addView(updateBtn);
-            updateBtn.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) { onUpdateClicked(); }
-            });
-            checkUpdates(false);
-        }
+        Button privacy = row("Политика конфиденциальности");
+        privacy.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(SettingsActivity.this, PrivacyActivity.class));
+            }
+        });
+        box.addView(privacy);
+
+        Button consent = row("Отозвать согласие на обработку данных");
+        consent.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { askRevokeConsent(); }
+        });
+        box.addView(consent);
+
         Button changelog = row("История изменений");
         changelog.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
@@ -710,6 +781,99 @@ public class SettingsActivity extends Activity {
 
     // ---------------- действия ----------------
 
+    /** Короткая строка о параметрах тела для настроек. */
+    private String bodySummary() {
+        int h = Steps.prefs(this).getInt("height_cm", 170);
+        int w = Steps.weightKg(this);
+        String sex = game.sex == 1 ? "мужской" : game.sex == 2 ? "женский" : "пол не указан";
+        String cal = Steps.showCalories(this) ? "калории видны" : "калории скрыты";
+        return "Параметры тела: " + h + " см · " + w + " кг · " + sex + " · " + cal;
+    }
+
+    /** Одно окно: рост, вес, пол и показ калорий. */
+    private void editBody() {
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(dp(18), dp(8), dp(18), dp(4));
+
+        TextView hHint = new TextView(this);
+        hHint.setText("Рост, см (нужен для расстояния)");
+        hHint.setTextSize(11f);
+        hHint.setTextColor(Theme.MUTED);
+        col.addView(hHint);
+
+        final EditText hInput = new EditText(this);
+        hInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        hInput.setText(String.valueOf(Steps.prefs(this).getInt("height_cm", 170)));
+        col.addView(hInput);
+
+        TextView wHint = new TextView(this);
+        wHint.setText("Вес, кг (для оценки калорий)");
+        wHint.setTextSize(11f);
+        wHint.setTextColor(Theme.MUTED);
+        col.addView(wHint);
+
+        final EditText wInput = new EditText(this);
+        wInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        wInput.setText(String.valueOf(Steps.weightKg(this)));
+        col.addView(wInput);
+
+        TextView sHint = new TextView(this);
+        sHint.setText("Пол (тоже для калорий)");
+        sHint.setTextSize(11f);
+        sHint.setTextColor(Theme.MUTED);
+        sHint.setPadding(0, dp(8), 0, 0);
+        col.addView(sHint);
+
+        final String[] sexNames = {"не указан", "мужской", "женский"};
+        final int[] sex = {Math.max(0, Math.min(2, game.sex))};
+        final Button sexPick = new Button(this);
+        sexPick.setText(sexNames[sex[0]]);
+        sexPick.setAllCaps(false);
+        sexPick.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                sex[0] = (sex[0] + 1) % 3;
+                sexPick.setText(sexNames[sex[0]]);
+            }
+        });
+        col.addView(sexPick);
+
+        final CheckBox cal = new CheckBox(this);
+        cal.setText("Показывать калории");
+        cal.setChecked(Steps.showCalories(this));
+        col.addView(cal);
+
+        new AlertDialog.Builder(this)
+                .setTitle("Параметры тела")
+                .setView(col)
+                .setPositiveButton("Сохранить", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        int h = parseOr(hInput.getText().toString(), 170);
+                        h = Math.max(120, Math.min(220, h));
+                        int kg = parseOr(wInput.getText().toString(), 70);
+                        kg = Math.max(30, Math.min(200, kg));
+                        Steps.prefs(SettingsActivity.this).edit()
+                                .putInt("height_cm", h)
+                                .putInt("weight_kg", kg)
+                                .putBoolean("show_calories", cal.isChecked())
+                                .apply();
+                        game.sex = sex[0];
+                        game.save(SettingsActivity.this);
+                        bodyButton.setText(bodySummary());
+                    }
+                })
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
+    private static int parseOr(String text, int fallback) {
+        try {
+            return Integer.parseInt(text.trim());
+        } catch (Exception e) {
+            return fallback;
+        }
+    }
+
     private void editGoal() {
         final EditText input = new EditText(this);
         input.setInputType(InputType.TYPE_CLASS_NUMBER);
@@ -752,7 +916,7 @@ public class SettingsActivity extends Activity {
                             if (kg < 30 || kg > 200) return;
                             Steps.prefs(SettingsActivity.this).edit()
                                     .putInt("weight_kg", kg).apply();
-                            weightButton.setText("Вес для калорий: " + kg + " кг");
+                            if (bodyButton != null) bodyButton.setText(bodySummary());
                         } catch (Exception ignored) { }
                     }
                 })
@@ -773,14 +937,14 @@ public class SettingsActivity extends Activity {
                         @Override public void onClick(DialogInterface d, int w) {
                             Steps.prefs(SettingsActivity.this).edit()
                                     .putBoolean("show_calories", true).apply();
-                            caloriesButton.setText("Калории: показывать");
+                            if (bodyButton != null) bodyButton.setText(bodySummary());
                         }
                     })
                     .setNegativeButton("Не надо", null)
                     .show();
         } else {
             Steps.prefs(this).edit().putBoolean("show_calories", false).apply();
-            caloriesButton.setText("Калории: скрыты");
+            if (bodyButton != null) bodyButton.setText(bodySummary());
         }
     }
     private void editHeight() {
@@ -799,7 +963,7 @@ public class SettingsActivity extends Activity {
                             if (h < 120 || h > 220) return;
                             Steps.prefs(SettingsActivity.this).edit()
                                     .putInt("height_cm", h).apply();
-                            heightButton.setText("Рост для длины шага: " + h + " см");
+                            if (bodyButton != null) bodyButton.setText(bodySummary());
                         } catch (Exception ignored) { }
                     }
                 })
@@ -891,6 +1055,34 @@ public class SettingsActivity extends Activity {
         Toast.makeText(SettingsActivity.this, "Прогресс сброшен", Toast.LENGTH_SHORT).show();
     }
 
+    private void openExactAlarmSettings() {
+        if (Build.VERSION.SDK_INT < 31) {
+            Toast.makeText(this, "Точные будильники на этой версии Android не нужны",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            startActivity(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                    Uri.parse("package:" + getPackageName())));
+        } catch (Exception e) {
+            Toast.makeText(this, "Не удалось открыть настройки будильников",
+                    Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void openBatterySettings() {
+        try {
+            // без разрешения REQUEST_IGNORE_BATTERY_OPTIMIZATIONS:
+            // показываем общий список, пользователь выбирает приложение сам
+            startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+        } catch (Exception e) {
+            try {
+                startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:" + getPackageName())));
+            } catch (Exception ignored) { }
+        }
+    }
+
     private void askPermissions() {
         java.util.List<String> need = new java.util.ArrayList<>();
         if (Build.VERSION.SDK_INT >= 29
@@ -910,72 +1102,9 @@ public class SettingsActivity extends Activity {
         requestPermissions(need.toArray(new String[0]), REQ_PERMS);
     }
 
-    private void askBattery() {
-        try {
-            Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-            i.setData(Uri.parse("package:" + getPackageName()));
-            startActivity(i);
-        } catch (Exception e) {
-            Toast.makeText(this, "Не удалось открыть настройки", Toast.LENGTH_SHORT).show();
-        }
-    }
-
     /** Подпись кнопки оформления для теста. */
     private String decorLabel() {
         return "Новогоднее оформление: " + (NewYearDecor.enabled(this) ? "включено" : "по датам");
-    }
-    // ---------------- обновление ----------------
-
-    private Button updateBtn;
-    /** Свежая версия, если проверка уже нашла обновление. */
-    private Updater.Info pendingUpdate;
-
-    private void onUpdateClicked() {
-        if (pendingUpdate != null) {
-            updateBtn.setText("Обновление: скачиваю…");
-            updateBtn.setEnabled(false);
-            Updater.downloadAndInstall(this, pendingUpdate, new Runnable() {
-                @Override public void run() {
-                    updateBtn.setEnabled(true);
-                    updateBtn.setText(updateText());
-                    Toast.makeText(SettingsActivity.this,
-                            "Не удалось скачать обновление", Toast.LENGTH_LONG).show();
-                }
-            });
-            return;
-        }
-        checkUpdates(true);
-    }
-
-    /** Проверка версии на GitHub; silent — без тостов, если проверяем при открытии. */
-    private void checkUpdates(final boolean byUser) {
-        if (updateBtn == null) return;
-        updateBtn.setText("Обновление: проверяю…");
-        Updater.check(this, new Updater.Callback() {
-            @Override public void done(Updater.Info info, boolean updateAvailable, String error) {
-                pendingUpdate = updateAvailable ? info : null;
-                updateFailed = info == null;
-                updateBtn.setEnabled(true);
-                updateBtn.setText(updateText());
-                if (byUser) {
-                    String msg = info == null
-                            ? "Не удалось проверить: нет связи с GitHub"
-                            : updateAvailable
-                                ? "Есть новая версия " + info.versionName
-                                : "Обновление не нужно — стоит последняя";
-                    Toast.makeText(SettingsActivity.this, msg, Toast.LENGTH_SHORT).show();
-                }
-            }
-        });
-    }
-
-    /** Состояние проверки: нет связи — так и пишем, чтобы можно было повторить. */
-    private boolean updateFailed;
-
-    private String updateText() {
-        if (pendingUpdate != null) return "Обновить до " + pendingUpdate.versionName;
-        if (updateFailed) return "Обновление: проверить (нет связи)";
-        return "Обновление не нужно (" + Updater.installedName(this) + ")";
     }
     /** Подпись кнопки афиши для теста. */
     private String promoLabel() {
@@ -992,7 +1121,7 @@ public class SettingsActivity extends Activity {
     }
     private void toggleService() {
         SharedPreferences p = getSharedPreferences(Steps.PREFS, MODE_PRIVATE);
-        boolean on = p.getBoolean(Steps.KEY_SERVICE, false);
+        boolean on = Steps.serviceEnabled(this);
         boolean next = !on;
         p.edit().putBoolean(Steps.KEY_SERVICE, next).apply();
 
@@ -1058,6 +1187,126 @@ public class SettingsActivity extends Activity {
             return "Погода в саду: реальная — " + Weather.describe(Weather.code(this));
         }
         return "Погода в саду: авто (нет данных)";
+    }
+
+    /** Отзыв согласия: предупреждаем, что игра закроется и спросит согласие заново. */
+    private void askRevokeConsent() {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Отозвать согласие?")
+                .setMessage("Игра закроется и при следующем запуске снова спросит согласие. "
+                        + "Прогресс и цветы на телефоне останутся, но рейтинги и друзья "
+                        + "не будут работать, пока согласие не дашь снова.")
+                .setPositiveButton("Отозвать", new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int w) {
+                        ConsentActivity.setAgreed(SettingsActivity.this, false);
+                        finishAffinity();
+                    }
+                })
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
+    /**
+     * Самопроверка заморозки: применяем садовника, «промахиваем» день и смотрим,
+     * что сорняк не вырос. Потом возвращаем всё как было — тест ничего не меняет.
+     */
+    private void checkFreeze() {
+        GameState g = GameState.load(this);
+        int weedsBefore = g.weeds;
+        int neglectBefore = g.neglect;
+        String frozenBefore = g.frozenDay;
+        String bonusBefore = g.bonusDay;
+        int gardenersBefore = g.gardeners;
+        if (gardenersBefore == 0) g.gardeners = 1;      // только для теста
+
+        boolean applied = g.applyGardener();
+        boolean frozenNow = g.isFrozenToday();
+        g.simulateMiss();
+        int weedsAfter = g.weeds;
+        boolean witheredAfter = g.withered;
+
+        // откат: заморозка, сорняки и инвентарь как были
+        g.weeds = weedsBefore;
+        g.neglect = neglectBefore;
+        g.frozenDay = frozenBefore;
+        g.bonusDay = bonusBefore;
+        g.gardeners = gardenersBefore;
+        g.withered = witheredAfter && false;
+        g.save(this);
+
+        String verdict = (frozenNow && weedsAfter == weedsBefore)
+                ? "OK: заморозка держит, сорняк не вырос"
+                : (applied ? "ПРОБЛЕМА: сорняков " + weedsBefore + " → " + weedsAfter
+                           : "ПРОБЛЕМА: садовник не применился");
+        Toast.makeText(this, verdict + " · заморозка: " + frozenNow
+                + " · сорняки: " + weedsBefore + " → " + weedsAfter, Toast.LENGTH_LONG).show();
+    }
+
+    /** Подпись тестового переключателя кольца. */
+    private String ringZeroLabel() {
+        boolean on = getSharedPreferences(Steps.PREFS, MODE_PRIVATE)
+                .getBoolean("ring_test_zero", false);
+        return "Кольцо без прогресса (тест): " + (on ? "включено" : "выключено");
+    }
+
+    /** Диагностика сорняков: почему появились или не появились. */
+    private String weedsDiagnostic() {
+        GameState g = GameState.load(this);
+        int[] last = Steps.lastDays(this, 2);
+        int yesterday = last.length > 1 ? last[0] : 0;
+        int goal = Math.max(1000, g.goal);
+        String bonus = g.bonusDay == null || g.bonusDay.isEmpty() ? "нет" : g.bonusDay;
+        String frozen = g.frozenDay == null || g.frozenDay.isEmpty() ? "нет" : g.frozenDay;
+        int effective = g.bonusDay != null && g.bonusDay.equals(Steps.shiftDayPublic(Steps.today(), -1))
+                ? yesterday * 2 : yesterday;
+        int[] last4 = Steps.lastDays(this, 4);
+        String tail = "";
+        for (int v : last4) tail += Ui.num(v) + " · ";
+        return "Сорняки: " + g.weeds + " · пропусков: " + g.neglect
+                + " · засох: " + (g.withered ? "да" : "нет")
+                + "\nвчера: " + Ui.num(yesterday) + " (норма " + Ui.num(effective)
+                + " из " + Ui.num(goal) + ")"
+                + "\n4 дня: " + tail
+                + "\nбонус: " + bonus + " · заморозка: " + frozen
+                + "\nдень проверки: " + (g.checkDay.isEmpty() ? "пусто" : g.checkDay);
+    }
+
+    /** Свежий расход бесплатных запросов облака: вызовы, чтения и записи хранилища. */
+    private void showCloudLimits() {
+        final android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
+                .setTitle("Лимиты Яндекс Облака")
+                .setMessage("Запрашиваю актуальные цифры…")
+                .setNegativeButton("Закрыть", null)
+                .create();
+        dialog.show();
+        Social.stats(new Social.StatsCallback() {
+            @Override public void done(org.json.JSONObject data, String error) {
+                if (isFinishing()) return;
+                if (data == null) {
+                    dialog.setMessage("Не получилось получить цифры: " + error);
+                    return;
+                }
+                org.json.JSONObject limits = data.optJSONObject("limits");
+                org.json.JSONObject used = data.optJSONObject("used");
+                int calls = used == null ? 0 : used.optInt("invocations", 0);
+                int gets = used == null ? 0 : used.optInt("gets", 0);
+                int puts = used == null ? 0 : used.optInt("puts", 0);
+                int limCalls = limits == null ? 1000000 : limits.optInt("invocations", 1000000);
+                int limGets = limits == null ? 100000 : limits.optInt("gets", 100000);
+                int limPuts = limits == null ? 10000 : limits.optInt("puts", 10000);
+
+                String text = "Период: " + data.optString("periodStart") + " — "
+                        + data.optString("periodEnd") + "\n"
+                        + "сброс 1-го числа, как в биллинге\n\n"
+                        + "Вызовы: " + Ui.num(calls) + " из " + Ui.num(limCalls)
+                        + "\nосталось " + Ui.num(Math.max(0, limCalls - calls)) + "\n\n"
+                        + "Чтения хранилища: " + Ui.num(gets) + " из " + Ui.num(limGets)
+                        + "\nосталось " + Ui.num(Math.max(0, limGets - gets)) + "\n\n"
+                        + "Записи хранилища: " + Ui.num(puts) + " из " + Ui.num(limPuts)
+                        + "\nосталось " + Ui.num(Math.max(0, limPuts - puts));
+                dialog.setMessage(text);
+            }
+        });
     }
 
     private String weatherStatusLabel() {

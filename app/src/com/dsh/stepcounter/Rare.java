@@ -26,9 +26,11 @@ public final class Rare {
     public static final int MAGIC = -2;
     /** Цвятачёк розовой зари — второй редкий цветок (название владельца). */
     public static final int DAWN = -3;
+    /** Ледяная роза — третий редкий цветок (19.11.2026). */
+    public static final int ICE = -4;
 
     /** Все редкие виды: порядок — порядок полки «необычные» в коллекции. */
-    static final int[] ALL = {MAGIC, DAWN};
+    static final int[] ALL = {MAGIC, DAWN, ICE};
 
     /**
      * Сколько кадров у вида.
@@ -50,27 +52,42 @@ public final class Rare {
     private Rare() { }
 
     public static boolean isRare(int species) {
-        return species == MAGIC || species == DAWN;
+        return species == MAGIC || species == DAWN || species == ICE;
+    }
+
+    /**
+     * Кадры нарисованы на общем холсте: растение стоит на одной земле, кадры не
+     * обрезаны по содержимому. Для таких видов не нужно выравнивать долю кадра
+     * (иначе семечко раздувается) — рост читается по самим кадрам.
+     */
+    public static boolean evenCanvas(int species) {
+        return species == ICE;
     }
 
     public static int price(int species) {
+        if (species == ICE) return 2000;
         return 1000;
     }
 
     public static String name(int species) {
+        if (species == ICE) return "Ледяная роза";
         if (species == DAWN) return "Цвятачёк розовой зари";
         return "Волшебная ромашка";
     }
 
     public static String wish(int species) {
+        if (species == ICE) {
+            return "Пусть даже в самый морозный день в твоём саду распускается чудо.";
+        }
         if (species == DAWN) {
             return "Пусть каждый рассвет приносит что-то нежное — как этот цветок.";
         }
         return "Пусть в твоём саду случаются чудеса — маленькие, но настоящие.";
     }
 
-    /** Основа имён файлов: magic / dawn. */
+    /** Основа имён файлов: magic / dawn / ice. */
     private static String base(int species) {
+        if (species == ICE) return "ice";
         return species == DAWN ? "dawn" : "magic";
     }
 

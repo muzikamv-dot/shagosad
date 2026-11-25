@@ -66,13 +66,13 @@ public class QuestsView extends View {
         // задания
         y += 84 * d + 12 * d;
         quest(c, pad, y, w - pad * 2, "Пройти " + game.q1Target + " шагов",
-                game.q1Done, game.q1Target, game.q1Claimed == 1, "+60 очков", Theme.ACCENT);
+                game.q1Done, game.q1Target, game.q1Claimed == 1, "+100 очков", Theme.ACCENT);
         y += 78 * d;
         quest(c, pad, y, w - pad * 2, "Вырастить цветок сегодня",
-                Math.min(1, game.flowersToday), 1, game.flowersToday >= 1, "+40 очков", Theme.ACCENT);
+                Math.min(1, game.flowersToday), 1, game.flowersToday >= 1, "+100 очков", Theme.ACCENT);
         y += 78 * d;
         quest(c, pad, y, w - pad * 2, "Неделя: 7 цветов",
-                Math.min(7, game.weekFlowers), 7, game.q3Claimed == 1, "+300 очков", Theme.GOLD);
+                Math.min(7, game.weekFlowers), 7, game.q3Claimed == 1, "+700 очков", Theme.GOLD);
 
         // неделя: тот же шаг, что и между заданиями (было +14dp сверху,
         // из-за чего блок «ЭТА НЕДЕЛЯ» висел заметно ниже остальных)

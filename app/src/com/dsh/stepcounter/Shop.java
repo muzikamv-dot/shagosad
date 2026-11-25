@@ -92,7 +92,8 @@ public final class Shop {
         // сначала готовая картинка (перерисованные рамки), иначе — отрисовка кодом
         android.graphics.Bitmap fb = frameBitmap(ctx, id);
         if (fb != null) {
-            // картинка занимает чуть больше кольца, как и код-рамки (до r*1.06)
+            // Рамка рисуется на 6 % шире кольца — запас под неё держит AvatarView
+            // (радиус круга там 0.89 от половины вью), поэтому ничего не срезается.
             float half = r * 1.06f;
             RectF dst = new RectF(cx - half, cy - half, cx + half, cy + half);
             Paint ip = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);

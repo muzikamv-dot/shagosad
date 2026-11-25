@@ -44,6 +44,12 @@ public final class Theme {
     /** Цвет текста на акцентной кнопке: на мяте — тёмный, на белом — почти чёрный. */
     public static int ON_ACCENT;
 
+    // Страховка: даже если какая-то Activity обратится к палитре до Theme.load,
+    // цвета не останутся нулевыми (иначе получается пустой серый экран).
+    static {
+        apply(T_NIGHT);
+    }
+
     private Theme() { }
 
     public static int mode() { return current; }

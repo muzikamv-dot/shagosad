@@ -5,14 +5,29 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
+import android.os.PowerManager;
 
 /** Будильники приложения: полночь и частый замер шагов. */
 final class AlarmScheduler {
 
     /** Как часто забирать показания счётчика в фоне. */
-    static final long SYNC_EVERY_MS = 15 * 60 * 1000L;
+    // Чаще замеры — точнее график по часам; 5 минут вместо 15 (12.11.2026)
+    static final long SYNC_EVERY_MS = 5 * 60 * 1000L;
 
     private AlarmScheduler() { }
+
+    /** Можно ли ставить точный будильник: без него полночь «плывёт» на час. */
+    static boolean exactAllowed(Context ctx) {
+        if (Build.VERSION.SDK_INT < 31) return true;
+        AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+        return am != null && am.canScheduleExactAlarms();
+    }
+
+    /** Приложение выведено из оптимизации батареи — иначе OEM может усыпить будильник. */
+    static boolean batteryUnrestricted(Context ctx) {
+        PowerManager pm = (PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
+        return pm != null && pm.isIgnoringBatteryOptimizations(ctx.getPackageName());
+    }
 
     /** Один будильник в сутки — чтобы день закрывался ровно в полночь. */
     static void schedule(Context ctx) {
@@ -26,10 +41,13 @@ final class AlarmScheduler {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         try {
-            boolean exact = Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms();
-            if (exact) {
+            if (exactAllowed(ctx)) {
+                // Ровно в 00:00:05, даже в Doze. Без этого окно было +1 час,
+                // и ночные шаги попадали в следующий день.
                 am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
             } else {
+                // Пока разрешение не выдано — честный запасной вариант;
+                // приложение отдельно просит включить точные будильники.
                 am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
             }
         } catch (SecurityException e) {
@@ -60,6 +78,34 @@ final class AlarmScheduler {
         long at = System.currentTimeMillis() + Math.max(60_000L, delayMs);
         try {
             am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
+        } catch (Exception ignored) { }
+    }
+
+    /** Сторож службы: раз в 15 минут. */
+    static void scheduleServiceWatchdog(Context ctx) {
+        scheduleServiceCheckIn(ctx, 15 * 60 * 1000L);
+    }
+
+    /** После свайпа из «Недавних» — быстрый перезапуск. */
+    static void scheduleServiceRestart(Context ctx) {
+        scheduleServiceCheckIn(ctx, 5000L);
+    }
+
+    static void scheduleServiceCheckIn(Context ctx, long delayMs) {
+        AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+        if (am == null) return;
+
+        Intent i = new Intent(ctx, ServiceRestartReceiver.class);
+        PendingIntent pi = PendingIntent.getBroadcast(ctx, 3, i,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        long at = System.currentTimeMillis() + Math.max(3000L, delayMs);
+        try {
+            if (exactAllowed(ctx)) {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
+            } else {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
+            }
         } catch (Exception ignored) { }
     }
 

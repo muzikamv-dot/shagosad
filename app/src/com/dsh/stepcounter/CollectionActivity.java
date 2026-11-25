@@ -112,6 +112,16 @@ public class CollectionActivity extends Activity {
         // фильтров больше нет: коллекция разложена по сезонам
         root.addView(Ui.divider(this));
 
+        // вся страница под шапкой листается одним движением, а не только сетка цветов
+        android.widget.ScrollView page = new android.widget.ScrollView(this);
+        page.setFillViewport(true);
+        page.setClipToPadding(false);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        page.addView(content);
+        root.addView(page, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
         // Уникальные цветы из ивентов: пока пустые места, они заполнятся,
         // когда в игре появятся праздничные семечки.
         LinearLayout events = new LinearLayout(this);
@@ -193,7 +203,7 @@ public class CollectionActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         ehp.topMargin = dp(7);
         events.addView(evHint, ehp);
-        root.addView(events);
+        content.addView(events);
 
         // Необычные цветы: те, что выросли из семечек магазина (волшебная ромашка)
         LinearLayout unusual = new LinearLayout(this);
@@ -259,27 +269,51 @@ public class CollectionActivity extends Activity {
 
             TextView unHint = new TextView(this);
             unHint.setText("цветы из семечек магазина — их не встретить в саду случайно");
-            unHint.setTextColor(Theme.FAINT);
-            unHint.setTextSize(9.5f);
+            unHint.setTextColor(Theme.MUTED);
+            unHint.setTextSize(11f);
             LinearLayout.LayoutParams uhp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             uhp.topMargin = dp(7);
             unusual.addView(unHint, uhp);
         } else {
+            // пустая полка выглядела сломанной: показываем силуэты будущих мест
+            LinearLayout emptySlots = new LinearLayout(this);
+            emptySlots.setOrientation(LinearLayout.HORIZONTAL);
+            LinearLayout.LayoutParams esp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            esp.topMargin = dp(6);
+            for (int i = 0; i < 4; i++) {
+                TextView ghost = new TextView(this);
+                ghost.setText("?");
+                ghost.setTextColor(Theme.STROKE);
+                ghost.setTextSize(20);
+                ghost.setGravity(Gravity.CENTER);
+                GradientDrawable gd = new GradientDrawable();
+                gd.setColor(0x22000000);
+                gd.setCornerRadius(dp(16));
+                gd.setStroke(dp(1), Theme.STROKE);
+                ghost.setBackground(gd);
+                LinearLayout.LayoutParams glp = new LinearLayout.LayoutParams(0, dp(104), 1f);
+                if (i > 0) glp.leftMargin = dp(8);
+                emptySlots.addView(ghost, glp);
+            }
+            unusual.addView(emptySlots, esp);
+
             TextView unEmpty = new TextView(this);
-            unEmpty.setText("пока пусто — такие семена бывают в магазине");
-            unEmpty.setTextColor(Theme.FAINT);
-            unEmpty.setTextSize(9.5f);
-            unEmpty.setPadding(0, dp(6), 0, 0);
+            unEmpty.setText("здесь появятся цветы из семечек магазина");
+            unEmpty.setTextColor(Theme.MUTED);
+            unEmpty.setTextSize(11f);
+            unEmpty.setPadding(0, dp(7), 0, 0);
             unusual.addView(unEmpty);
         }
-        root.addView(unusual);
+        content.addView(unusual);
 
         // Медали: превью полученных, чтобы коллекция показывала не только цветы
-        root.addView(medalsBlock());
+        content.addView(medalsBlock());
 
         grid = new CollectionView(this);
         grid.setMinimumHeight(dp(240));
+        grid.setExpand(true);      // высота по содержимому: листает страница
         grid.setListener(new CollectionView.Listener() {
             @Override public void onSpeciesTap(int species, boolean collected) {
                 if (collected) openCard(species);
@@ -287,8 +321,8 @@ public class CollectionActivity extends Activity {
                         "Этот вид ещё не собран", Toast.LENGTH_SHORT).show();
             }
         });
-        root.addView(grid, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        content.addView(grid, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         refresh();
         return root;
@@ -377,13 +411,29 @@ public class CollectionActivity extends Activity {
             row.addView(coin, ilp);
         }
         android.widget.HorizontalScrollView holder = scroll;
-        // ленту медалей тянут вбок, а страница листается вниз: при движении пальцем
-        // вбок запрещаем вертикальному ScrollView перехватывать жест
+        // Лента медалей тянется вбок, но страница должна листаться вниз.
+        // Раньше здесь на любой жест запрещалось перехватывать его странице — и
+        // вертикальная прокрутка ломалась, если палец начинал движение на медалях.
+        // Теперь запрещаем только когда движение явно горизонтальное.
+        final float[] down = new float[2];
         holder.setOnTouchListener(new View.OnTouchListener() {
             @Override public boolean onTouch(View v, android.view.MotionEvent e) {
-                if (e.getActionMasked() == android.view.MotionEvent.ACTION_MOVE) {
-                    android.view.ViewParent par = v.getParent();
-                    if (par != null) par.requestDisallowInterceptTouchEvent(true);
+                android.view.ViewParent par = v.getParent();
+                switch (e.getActionMasked()) {
+                    case android.view.MotionEvent.ACTION_DOWN:
+                        down[0] = e.getX();
+                        down[1] = e.getY();
+                        if (par != null) par.requestDisallowInterceptTouchEvent(false);
+                        break;
+                    case android.view.MotionEvent.ACTION_MOVE:
+                        float dx = Math.abs(e.getX() - down[0]);
+                        float dy = Math.abs(e.getY() - down[1]);
+                        boolean sideways = dx > dy * 1.2f && dx > dp(6);
+                        if (par != null) par.requestDisallowInterceptTouchEvent(sideways);
+                        break;
+                    default:
+                        if (par != null) par.requestDisallowInterceptTouchEvent(false);
+                        break;
                 }
                 return false;
             }

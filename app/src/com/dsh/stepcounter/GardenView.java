@@ -16,7 +16,13 @@ import android.view.View;
 public class GardenView extends View {
 
 
-    public interface Listener { void onTap(); }
+    public interface Listener {
+        /** Обычное нажатие: полить, срезать, открыть магазин и т. п. */
+        void onTap();
+
+        /** Сбор букета: вызывается ТОЛЬКО когда удержание дошло до конца. */
+        void onCollected();
+    }
 
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint st = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -31,7 +37,8 @@ public class GardenView extends View {
     /** Строка букета считается не каждый кадр, а при изменении числа открыток. */
     private String bouquetCache = "";
     private int bouquetCards = -1;
-    private boolean bouquetMagic = false;
+    /** Сколько редких семечек было при прошлом расчёте строки: ключ кэша. */
+    private int bouquetMagic = 0;
 
     public static final String[] SPECIES_NAMES = {"Ромашка", "Пион", "Лаванда", "Мак", "Ирис", "Роза",
             "Тюльпан", "Подсолнух", "Лотос", "Звёздный", "Лунная лилия", "Кристальный"};
@@ -90,6 +97,10 @@ public class GardenView extends View {
     private int cutSide = 1;       // -1 — левое гнездо, +1 — правое (удар с другой стороны)
     private float digAnim = -1f;   // 0..1 — лопата выкапывает засохший цветок
     private Runnable cutDone, digDone;
+
+    /** Картинка заморозки от художника (`freeze_ice`), грузим один раз. */
+    private android.graphics.Bitmap freezeArt;
+    private boolean freezeLoaded;
 
     private static final long CUT_MS = 640L;
     private static final long DIG_MS = 1150L;
@@ -329,21 +340,24 @@ public class GardenView extends View {
 
     /** «в букете 13 цветов · в этом сезоне 13»: без потолка «из 365». */
     private String bouquetText() {
-        if (bouquetCards == game.cards.size() && bouquetMagic == (game.rareQueuedCount() != 0)
+        int seeds = game.rareSeedsTotal();
+        if (bouquetCards == game.cards.size() && bouquetMagic == seeds
                 && bouquetCache.length() > 0) return bouquetCache;
         int now = 0;
         String key = Season.now();
         for (GameState.Card c : game.cards) {
             if (c != null && c.species >= 0 && Season.key(c.date).equals(key)) now++;
         }
-        // купленное волшебное семечко ждёт, пока дорастёт текущий цветок
-        String wait = game.rareQueuedCount() != 0 && !game.growingRare()
-                    ? "редких семечек в очереди: " + game.rareQueuedCount() + " · " : "";
+        // купленные редкие семечки лежат в инвентаре и ждут посадки.
+        // «в инвентаре» из строки убрано: с ним строка не влезала в экран,
+        // а смысл и так ясен — семечки лежат в инвентаре.
+        String wait = seeds != 0 && !game.growingRare()
+                    ? "редких семечек: " + seeds + " · " : "";
         bouquetCache = wait + "в букете " + game.bloomed.size() + " "
                 + Ui.plural(game.bloomed.size(), "цветок", "цветка", "цветов")
                 + " · в этом сезоне " + now;
         bouquetCards = game.cards.size();
-        bouquetMagic = game.rareQueuedCount() != 0;
+        bouquetMagic = seeds;
         return bouquetCache;
     }
 
@@ -361,6 +375,23 @@ public class GardenView extends View {
         tx.setColor(color);
         tx.setTextAlign(Paint.Align.CENTER);
         tx.setTypeface(Typeface.create(medium ? "sans-serif-medium" : "sans-serif", Typeface.NORMAL));
+        c.drawText(s, cx, Ui.baseline(tx, cy), tx);
+    }
+
+    /**
+     * То же, но с подгонкой по ширине: если строка шире maxW, шрифт уменьшается.
+     * Строка про букет растёт с числами («в букете 1 234 цветка»), а до этого
+     * с подписью про редкие семечки она вылезала за края экрана.
+     */
+    private void centeredFit(Canvas c, String s, float cx, float cy, float size, int color, float maxW) {
+        float px = size * d;
+        tx.setTextSize(px);
+        float tw = tx.measureText(s);
+        if (tw > maxW && tw > 0f) px = Math.max(8f * d, px * maxW / tw);
+        tx.setTextSize(px);
+        tx.setColor(color);
+        tx.setTextAlign(Paint.Align.CENTER);
+        tx.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
         c.drawText(s, cx, Ui.baseline(tx, cy), tx);
     }
 
@@ -426,7 +457,10 @@ public class GardenView extends View {
         float plantTop = cardTop + 34 * d;
 
         int stage = (canActive && stageBefore >= 0) ? stageBefore : game.stage[0];
+        // защита от данных из другой версии: неизвестный вид не должен ронять сад
         int species = game.species[0];
+        boolean known = (species >= 0 && species < Species.COUNT) || Rare.isRare(species);
+        if (!known) species = 0;
         float fsize = Math.min(Math.max(60 * d, plantBottom - plantTop),
                 Math.min((w - pad * 2) * 0.86f, cardH * 0.78f));
 
@@ -459,7 +493,7 @@ public class GardenView extends View {
             // ступени заметно разные: разница между 9 и 10 видна глазом
             float[] steps = {0.58f, 0.63f, 0.68f, 0.73f, 0.78f, 0.83f, 0.88f, 0.93f, 0.98f, 1.03f, 1.10f};
             float frac = steps[Math.max(0, Math.min(10, rareStage))];
-            if (rareStage >= 3) {
+            if (rareStage >= 3 && !Rare.evenCanvas(rareSpecies)) {
                 float ratio = Rare.contentRatio(getContext(), rareSpecies, rareStage);
                 frac = Math.min(frac / Math.max(0.55f, ratio), frac * 1.35f);
             }
@@ -502,19 +536,29 @@ public class GardenView extends View {
         // осадки идут и перед цветком — иначе дождь выглядит как за стеклом
         DayPhase.drawFront(getContext(), c, card, 26 * d, d, sceneTime);
 
-        // стадии
+        // стадии: цвет точек и счётчика зависит от освещения (день — тёмные, ночь — светлые)
         float dotsY = cardTop + 24 * d;
-        for (int i = 0; i < 10; i++) {
-            float cx = pad + 22 * d + i * 13 * d;
-            p.setStyle(Paint.Style.FILL);
-            p.setColor(i < stage ? Theme.ACCENT : Theme.STROKE);
-            c.drawCircle(cx, dotsY, 3.4f * d, p);
+        float dayLight = DayPhase.nightNow(getContext());     // 0 день … 1 ночь
+        int quiet = dayLight <= 0.45f ? 0xFF33424E : Theme.MUTED;
+        int emptyDot = dayLight <= 0.45f ? 0x6633424E : Theme.STROKE;
+        if (!game.freezeActive()) {
+            for (int i = 0; i < 10; i++) {
+                float cx = pad + 22 * d + i * 13 * d;
+                p.setStyle(Paint.Style.FILL);
+                p.setColor(i < stage ? Theme.ACCENT : emptyDot);
+                c.drawCircle(cx, dotsY, 3.4f * d, p);
+            }
+            centered(c, stage + " / 10", w - pad - 18 * d, dotsY, 9.5f, quiet, false);
         }
-        centered(c, stage + " / 10", w - pad - 18 * d, dotsY, 9.5f, Theme.MUTED, false);
+
+        // заморозка садовником: лёд поверх грядки до полуночи
+        if (game.freezeActive()) drawFreeze(c, card, d);
 
         // подпись
         String caption;
-        if (game.withered) {
+        if (game.freezeActive()) {
+            caption = "";      // всё уже написано на льду, дублировать не нужно
+        } else if (game.withered) {
             caption = "цветок засох · нужна лопата";
         } else if (game.weeds > 0) {
             caption = "сорняков: " + game.weeds + " · нужна тяпка";
@@ -524,6 +568,7 @@ public class GardenView extends View {
                     : Species.FORM[Species.shape(species) % Species.FORM.length];
             caption = name + " · " + STAGE_NAMES[Math.min(10, stage)];
         }
+        // подпись лежит на тёмной траве — ей нужен светлый цвет в любую погоду
         centered(c, caption, w / 2f, labelY, 11.5f,
                 game.plotBlocked() ? Theme.GOLD : Theme.MUTED, false);
 
@@ -532,7 +577,11 @@ public class GardenView extends View {
         // кнопка-действие под карточкой
         String action;
         boolean ready;
-        if (game.withered) {
+        if (game.freezeActive()) {
+            // пока лёд стоит, с цветком нельзя ничего: ни полить, ни собрать
+            action = "Заморожено до полуночи";
+            ready = false;
+        } else if (game.withered) {
             action = game.shovels > 0
                     ? "Перекопать лопатой"
                     : "Нужна лопата — посети магазин";
@@ -564,46 +613,53 @@ public class GardenView extends View {
         centered(c, btnText, w / 2f, (btnTop + btnBottom) / 2f, 14,
                 ready ? Theme.ON_ACCENT : Theme.MUTED, true);
 
-        // удержание «Собрать букет»: полоса бежит по краю кнопки
+        // удержание «Собрать букет»: полоса обегает КРАЙ КАРТОЧКИ с цветком —
+        // за три секунды ровно один круг
         if (holding && "Собрать букет".equals(action)) {
             float prog = Math.min(1f, (System.currentTimeMillis() - holdStart) / (float) HOLD_MS);
+            float inset = 2.5f * d;
+            android.graphics.RectF ring = new android.graphics.RectF(
+                    card.left + inset, card.top + inset, card.right - inset, card.bottom - inset);
+            float radius = 26 * d;
             android.graphics.Path edge = new android.graphics.Path();
-            edge.addRoundRect(buttonRect, 26 * d, 26 * d, android.graphics.Path.Direction.CW);
+            edge.addRoundRect(ring, radius, radius, android.graphics.Path.Direction.CW);
             android.graphics.PathMeasure pm = new android.graphics.PathMeasure(edge, false);
             float len = pm.getLength();
+
+            // лёгкая подсветка по всему контуру — видно, куда «бежит» полоса
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(2f * d);
+            p.setStrokeCap(Paint.Cap.ROUND);
+            p.setColor(Theme.GOLD);
+            p.setAlpha(60);
+            c.drawPath(edge, p);
+
             if (prog > 0.001f) {
                 android.graphics.Path seg = new android.graphics.Path();
                 pm.getSegment(0, len * prog, seg, true);
                 p.setStyle(Paint.Style.STROKE);
-                p.setStrokeWidth(3.5f * d);
+                p.setStrokeWidth(4.5f * d);
                 p.setStrokeCap(Paint.Cap.ROUND);
                 p.setColor(Theme.GOLD);
                 p.setAlpha(255);
                 c.drawPath(seg, p);
+
                 float[] pos = new float[2];
                 pm.getPosTan(len * prog, pos, null);
                 p.setStyle(Paint.Style.FILL);
                 p.setColor(0xFFFFFFFF);
-                p.setAlpha(235);
-                c.drawCircle(pos[0], pos[1], 4.2f * d, p);
+                p.setAlpha(240);
+                c.drawCircle(pos[0], pos[1], 5f * d, p);
                 p.setAlpha(255);
             }
-            if (prog >= 1f && !holdDone) {
-                holdDone = true;
-                holding = false;
-                post(new Runnable() {
-                    @Override public void run() {
-                        if (listener != null) listener.onTap();
-                    }
-                });
-            }
+            // сбор запускает holdTick, здесь только рисуем прогресс
         }
 
         // ---- счётчик букета ----
         // Раньше здесь была сетка из 12 плашек с точками: они выглядели нажимаемыми,
         // показывали 12 из 365 и ничего не объясняли. Осталась одна тихая строка.
-        centered(c, bouquetText(),
-                w / 2f, btnBottom + 26 * d, 11, Theme.FAINT, false);
+        centeredFit(c, bouquetText(),
+                w / 2f, btnBottom + 26 * d, 11, Theme.FAINT, w - 2 * pad - 6 * d);
 
         // блёстки поверх всего
         if (!sparks.isEmpty()) {
@@ -640,6 +696,27 @@ public class GardenView extends View {
     private boolean holdDone = false;
     private String currentAction = "";
 
+    /**
+     * Пока палец держат — каждые 50 мс перерисовываем и проверяем прогресс.
+     * Раньше сбор запускался из onDraw, и при частых тапах кадры «склеивались» —
+     * букет собирался без удержания.
+     */
+    private final Runnable holdTick = new Runnable() {
+        @Override public void run() {
+            if (!holding) return;
+            long elapsed = System.currentTimeMillis() - holdStart;
+            invalidate();
+            if (elapsed >= HOLD_MS) {
+                holding = false;
+                holdDone = true;
+                invalidate();
+                if (listener != null) listener.onCollected();
+                return;
+            }
+            postDelayed(this, 50L);
+        }
+    };
+
     @Override
     public boolean onTouchEvent(MotionEvent e) {
         float slop = 14 * d;
@@ -658,6 +735,8 @@ public class GardenView extends View {
                     holding = true;
                     holdDone = false;
                     holdStart = System.currentTimeMillis();
+                    removeCallbacks(holdTick);
+                    post(holdTick);
                     invalidate();
                     return true;
                 }
@@ -666,6 +745,7 @@ public class GardenView extends View {
                 if (holding) {
                     if (Math.abs(e.getX() - downX) > slop || Math.abs(e.getY() - downY) > slop) {
                         holding = false;      // увёл палец — сбор отменяется
+                        removeCallbacks(holdTick);
                         pressed = false;
                         invalidate();
                     }
@@ -679,10 +759,17 @@ public class GardenView extends View {
             case MotionEvent.ACTION_UP:
                 if (holding || holdDone) {
                     holding = false;
-                    pressed = false;
                     holdDone = false;
+                    pressed = false;
+                    removeCallbacks(holdTick);   // отпустил раньше времени — прогресс сброшен
                     invalidate();
-                    return true;             // обычный тап по «Собрать букет» больше не собирает
+                    return true;
+                }
+                if ("Собрать букет".equals(currentAction)) {
+                    // на готовом цветке одиночные тапы не собирают вообще:
+                    // только удержание, иначе букет улетал от частых нажатий
+                    pressed = false;
+                    return true;
                 }
                 boolean tap = pressed
                         && Math.abs(e.getX() - downX) <= slop
@@ -694,6 +781,7 @@ public class GardenView extends View {
                 holding = false;
                 holdDone = false;
                 pressed = false;       // родитель перехватил жест под свайп
+                removeCallbacks(holdTick);
                 return true;
         }
         return super.onTouchEvent(e);
@@ -770,6 +858,107 @@ public class GardenView extends View {
     }
 
     // ---------------- инструменты в действии ----------------
+
+    /**
+     * Экран заморозки: лёд поверх грядки до полуночи.
+     *
+     * Если художник дал картинку `freeze_ice` (квадратная, под область цветка) —
+     * рисуем её по большей стороне с обрезкой по карточке. Иначе рисуем лёд кодом:
+     * холодный градиент, трещины и снежинки.
+     */
+    private void drawFreeze(Canvas c, RectF area, float d) {
+        c.save();
+        android.graphics.Path clip = new android.graphics.Path();
+        clip.addRoundRect(new RectF(area.left, area.top, area.right, area.bottom),
+                26 * d, 26 * d, android.graphics.Path.Direction.CW);
+        c.clipPath(clip);
+
+        android.graphics.Bitmap art = freezeArt();
+        if (art != null) {
+            float side = Math.max(area.width(), area.height());
+            float left = area.centerX() - side / 2f;
+            float top = area.centerY() - side / 2f;
+            RectF dst = new RectF(left, top, left + side, top + side);
+            Paint ap = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+            c.drawBitmap(art, null, dst, ap);
+
+            // подпись внизу на полупрозрачной плашке: на картинке там лёд и сапоги,
+            // а лицо садовника под текстом закрывать нельзя
+            float plateH = 54 * d;
+            float plateTop = area.bottom - plateH - 16 * d;
+            RectF plate = new RectF(area.left + 14 * d, plateTop,
+                    area.right - 14 * d, plateTop + plateH);
+            Paint pp = new Paint(Paint.ANTI_ALIAS_FLAG);
+            pp.setColor(0xB30B2233);
+            c.drawRoundRect(plate, 16 * d, 16 * d, pp);
+
+            Paint tp = new Paint(Paint.ANTI_ALIAS_FLAG);
+            tp.setTextAlign(Paint.Align.CENTER);
+            tp.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            tp.setColor(0xFFEAF7FF);
+            tp.setTextSize(13 * d);
+            c.drawText("ЗАМОРОЖЕНО", plate.centerX(), plateTop + 22 * d, tp);
+            tp.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+            tp.setTextSize(10 * d);
+            tp.setColor(0xFFBEE3F6);
+            c.drawText("до полуночи · завтра шаги ×2", plate.centerX(),
+                    plateTop + 40 * d, tp);
+            c.restore();
+            return;
+        }
+
+        {
+            Paint ice = new Paint(Paint.ANTI_ALIAS_FLAG);
+            ice.setShader(new LinearGradient(area.left, area.top, area.right, area.bottom,
+                    new int[]{0xE6BFE9FF, 0xE68FD4F5, 0xE67FC4EC, 0xE6A9E2FF},
+                    new float[]{0f, 0.35f, 0.7f, 1f}, Shader.TileMode.CLAMP));
+            c.drawRect(area, ice);
+            ice.setShader(null);
+            Paint crack = new Paint(Paint.ANTI_ALIAS_FLAG);
+            crack.setStyle(Paint.Style.STROKE);
+            crack.setStrokeWidth(1.6f * d);
+            crack.setColor(0xCCFFFFFF);
+            float cx = area.centerX(), cy = area.centerY();
+            for (int i = 0; i < 9; i++) {
+                double a = i * 0.7 + 0.3;
+                float len = area.height() * (0.22f + (i % 3) * 0.08f);
+                c.drawLine(cx, cy,
+                        cx + (float) Math.cos(a) * len, cy + (float) Math.sin(a) * len, crack);
+            }
+            Paint flake = new Paint(Paint.ANTI_ALIAS_FLAG);
+            flake.setColor(0xEEFFFFFF);
+            for (int i = 0; i < 26; i++) {
+                float fx = area.left + area.width() * ((i * 37 % 100) / 100f);
+                float fy = area.top + area.height() * ((i * 61 % 100) / 100f);
+                c.drawCircle(fx, fy, (1.4f + (i % 3)) * d, flake);
+            }
+        }
+
+        Paint tp = new Paint(Paint.ANTI_ALIAS_FLAG);
+        tp.setTextAlign(Paint.Align.CENTER);
+        tp.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        tp.setColor(0xFF123A52);
+        tp.setTextSize(13 * d);
+        c.drawText("ЗАМОРОЖЕНО", area.centerX(), area.centerY() - 4 * d, tp);
+        tp.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        tp.setTextSize(10.5f * d);
+        tp.setColor(0xDD15485F);
+        c.drawText("до полуночи · завтра шаги ×2", area.centerX(), area.centerY() + 14 * d, tp);
+        c.restore();
+    }
+
+    /** Картинка заморозки из ресурсов, если художник её прислал. */
+    private android.graphics.Bitmap freezeArt() {
+        if (freezeLoaded) return freezeArt;
+        freezeLoaded = true;
+        try {
+            int res = getResources().getIdentifier("freeze_ice", "drawable",
+                    getContext().getPackageName());
+            if (res != 0) freezeArt = android.graphics.BitmapFactory.decodeResource(
+                    getResources(), res);
+        } catch (Exception ignored) { }
+        return freezeArt;
+    }
 
     /** Удар тяпкой: лезвие входит в землю у сорняка, травинки разлетаются. */
     private void drawHoeStrike(Canvas c, float cx, float baseY, float size) {
@@ -856,7 +1045,16 @@ public class GardenView extends View {
         c.save();
         c.translate(px, py);
         c.rotate(angle);
-        ToolIcon.drawShovel(c, 0, 0, size * 0.52f);
+        // если художник дал картинку лопаты — в анимации рисуем её, иначе код
+        android.graphics.Bitmap shovelArt = ToolIcon.art(getContext(), ToolIcon.SHOVEL);
+        if (shovelArt != null) {
+            float s = size * 0.52f;
+            android.graphics.RectF dst = new android.graphics.RectF(-s / 2f, -s / 2f, s / 2f, s / 2f);
+            Paint ap = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+            c.drawBitmap(shovelArt, null, dst, ap);
+        } else {
+            ToolIcon.drawShovel(c, 0, 0, size * 0.52f);
+        }
         c.restore();
 
         // земля, вылетающая при выгребании

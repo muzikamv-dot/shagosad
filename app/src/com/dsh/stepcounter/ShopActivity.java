@@ -176,7 +176,7 @@ public class ShopActivity extends Activity {
         av.setStyle(game.avatarStyle, game.avatarPalette);
         av.setNick(game.nick);
         av.setFrame(id);
-        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(dp(64), dp(64));
+        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(dp(72), dp(72));
         ap.rightMargin = dp(12);
         row.addView(av, ap);
 
@@ -252,16 +252,15 @@ public class ShopActivity extends Activity {
     // ---------------- инструменты и семена (пока в разработке) ----------------
 
     private void fillTools() {
-        list.addView(noteCard("Для чего это",
-                "Тяпка срезает сорняки: они появляются, если не выполнить норму шагов. "
-                        + "Лопата перекапывает землю, если цветок засох после трёх пропусков подряд. "
-                        + "Инструменты расходуются по одному за раз."));
-        list.addView(toolRow("Тяпка", GameState.HOE_PRICE, game.hoes, true));
-        list.addView(toolRow("Лопата", GameState.SHOVEL_PRICE, game.shovels, false));
+        // Общего описания сверху больше нет: у каждого предмета своё, открывается
+        // по тапу на иконку (ItemInfo.show).
+        list.addView(toolRow("Тяпка", GameState.HOE_PRICE, game.hoes, ToolIcon.HOE));
+        list.addView(toolRow("Лопата", GameState.SHOVEL_PRICE, game.shovels, ToolIcon.SHOVEL));
+        list.addView(toolRow("Садовник", GameState.GARDENER_PRICE, game.gardeners, ToolIcon.GARDENER));
     }
 
     /** Строка инструмента с покупкой. */
-    private View toolRow(String name, int price, int owned, final boolean hoe) {
+    private View toolRow(String name, int price, int owned, final int kind) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -272,9 +271,16 @@ public class ShopActivity extends Activity {
         bg.setStroke(dp(1), Theme.CARD_STROKE);
         row.setBackground(bg);
 
-        ToolIcon.View icon = new ToolIcon.View(this, hoe ? ToolIcon.HOE : ToolIcon.SHOVEL);
+        ToolIcon.View icon = new ToolIcon.View(this, kind);
         LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(dp(44), dp(44));
         ip.rightMargin = dp(12);
+        // тап по иконке — описание именно этого предмета
+        icon.setClickable(true);
+        icon.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                ItemInfo.show(ShopActivity.this, kind);
+            }
+        });
         row.addView(icon, ip);
 
         LinearLayout col = new LinearLayout(this);
@@ -287,7 +293,7 @@ public class ShopActivity extends Activity {
         col.addView(t);
 
         TextView d = new TextView(this);
-        d.setText(Shop.money(price) + " очков");
+        d.setText(Shop.money(price) + " очков" + (owned > 0 ? " · у тебя " + owned : ""));
         d.setTextColor(Theme.MUTED);
         d.setTextSize(10.5f);
         d.setPadding(0, dp(3), 0, 0);
@@ -311,7 +317,10 @@ public class ShopActivity extends Activity {
         action.setBackground(bd);
         action.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                boolean ok = hoe ? game.buyHoe() : game.buyShovel();
+                boolean ok;
+                if (kind == ToolIcon.HOE) ok = game.buyHoe();
+                else if (kind == ToolIcon.SHOVEL) ok = game.buyShovel();
+                else ok = game.buyGardener();
                 if (ok) {
                     game.save(ShopActivity.this);
                     Toast.makeText(ShopActivity.this, "Куплено", Toast.LENGTH_SHORT).show();
@@ -333,9 +342,10 @@ public class ShopActivity extends Activity {
     private void fillSeeds() {
         int before = list.getChildCount();
 
-        // необычные цветы за очки: ромашка, розовая заря и следующие
-        // Купить можно всегда — если цветок в саду недорощён, семечко подождёт.
+        // необычные цветы за очки: ромашка, розовая заря и следующие.
+        // Купленное семечко в магазине больше не показываем — оно лежит в инвентаре.
         for (int speciesId : Rare.ALL) {
+            if (game.rareSold(speciesId)) continue;
             list.addView(rareSeedCard(speciesId));
         }
 
@@ -357,10 +367,8 @@ public class ShopActivity extends Activity {
         }
     }
 
-    /** Редкий цветок: покупается за очки, растёт в саду, даёт необычную открытку. */
+    /** Редкий цветок: покупается за очки, семечко живёт в инвентаре до посадки. */
     private View rareSeedCard(final int species) {
-        boolean growing = game.growingRareSpecies() == species;
-        boolean waiting = !growing && game.hasQueuedRare(species);
         final int priceValue = Rare.price(species);
 
         LinearLayout box = new LinearLayout(this);
@@ -389,6 +397,19 @@ public class ShopActivity extends Activity {
         ico.setStroke(dp(1), Theme.CARD_STROKE);
         icon.setBackground(ico);
         icon.setPadding(dp(6), dp(6), dp(6), dp(6));
+        // тап по иконке — описание этого семечка
+        icon.setClickable(true);
+        icon.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                ItemInfo.show(ShopActivity.this, Rare.name(species),
+                        "Необычный цветок: полей его в саду 10 раз — и он даст открытку "
+                                + "в коллекцию, которой нет у других.\n\n"
+                                + "После покупки семечко будет лежать в инвентаре: посадите его "
+                                + "сами, когда грядка в саду освободится. Обычный цветок при этом "
+                                + "никуда не пропадёт.\n\n"
+                                + "Цена: " + Shop.money(priceValue) + " очков.");
+            }
+        });
         LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(dp(76), dp(76));
         ilp.rightMargin = dp(12);
         head.addView(icon, ilp);
@@ -415,15 +436,7 @@ public class ShopActivity extends Activity {
         box.addView(head);
 
         TextView note = new TextView(this);
-        note.setText(growing
-                ? "Семечко уже посажено: растите его в саду обычными лейками, "
-                        + "10 поливов — и открытка ваша."
-                : waiting
-                        ? "Семечко куплено и ждёт: как только соберёте цветок в саду, "
-                                + "оно прорастёт на его месте."
-                        : "Необычный цветок: 10 поливов в саду, затем открытка в коллекцию. "
-                                + "Если в саду ещё растёт цветок — этот начнёт расти после него, "
-                                + "нынешний не пропадёт.");
+        note.setText("10 поливов — и открытка в коллекцию");
         note.setTextColor(Theme.MUTED);
         note.setTextSize(11.5f);
         note.setPadding(0, dp(10), 0, dp(12));
@@ -434,17 +447,7 @@ public class ShopActivity extends Activity {
         buy.setTextSize(14f);
         GradientDrawable bbg = new GradientDrawable();
         bbg.setCornerRadius(dp(24));
-        if (growing) {
-            bbg.setColor(Theme.SURFACE);
-            buy.setText("Растёт в саду");
-            buy.setTextColor(Theme.MUTED);
-            buy.setEnabled(false);
-        } else if (waiting) {
-            bbg.setColor(Theme.SURFACE);
-            buy.setText("Куплено · ждёт своей грядки");
-            buy.setTextColor(Theme.GOLD);
-            buy.setEnabled(false);
-        } else if (game.points >= priceValue) {
+        if (game.points >= priceValue) {
             bbg.setColor(Theme.GOLD);
             buy.setText("Купить");
             buy.setTextColor(0xFF2A1E00);
@@ -465,22 +468,19 @@ public class ShopActivity extends Activity {
         return box;
     }
 
-    /** Купить редкое семечко: на свободную грядку сажается сразу,
-     *  а если цветок ещё растёт — ждёт его сбора, ничего не портя. */
+    /** Купить редкое семечко: оно уходит в инвентарь, сажают его уже оттуда. */
     private void buyRare(int speciesId) {
-        if (game.growingRareSpecies() == speciesId) return;
+        if (game.rareSold(speciesId)) return;
         int cost = Rare.price(speciesId);
         if (game.points < cost) {
             Toast.makeText(this, "Не хватает очков", Toast.LENGTH_SHORT).show();
             return;
         }
-        boolean free = game.plotEmpty();
         game.points -= cost;
-        game.queueRare(speciesId);
+        game.buyRareSeed(speciesId);
         game.save(this);
-        Toast.makeText(this, free
-                        ? "Семечко посажено — растите его в саду"
-                        : "Семечко будет ждать: соберёте текущий цветок — и редкий цветок прорастёт",
+        Toast.makeText(this,
+                "Семечко в инвентаре — посадите его, когда грядка свободна",
                 Toast.LENGTH_LONG).show();
         selectTab(2);
     }

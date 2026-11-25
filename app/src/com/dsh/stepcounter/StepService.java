@@ -64,6 +64,11 @@ public class StepService extends Service implements SensorEventListener {
     @Override
     public void onCreate() {
         super.onCreate();
+        if (!SensorSync.hasActivityPermission(this)) {
+            Log.w(TAG, "нет разрешения на активность — служба не стартует");
+            stopSelf();
+            return;
+        }
         prefs = Steps.prefs(this);
         notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         createChannel();
@@ -90,6 +95,9 @@ public class StepService extends Service implements SensorEventListener {
         } else {
             Log.w(TAG, "аппаратного счётчика шагов нет");
         }
+        // Служба сама ставит себе проверку: если её убьют, AlarmManager разбудит
+        // ServiceRestartReceiver, и он попробует поднять её снова.
+        AlarmScheduler.scheduleServiceWatchdog(this);
     }
 
     @Override
@@ -99,6 +107,13 @@ public class StepService extends Service implements SensorEventListener {
             return START_NOT_STICKY;
         }
         return START_STICKY;
+    }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        // Свайп из «Недавних» не должен выключать счётчик на весь день.
+        AlarmScheduler.scheduleServiceRestart(this);
+        super.onTaskRemoved(rootIntent);
     }
 
     @Override
@@ -148,7 +163,7 @@ public class StepService extends Service implements SensorEventListener {
     public void onAccuracyChanged(Sensor sensor, int accuracy) { }
 
     private int currentSteps() {
-        return prefs == null ? 0 : prefs.getInt(Steps.KEY_STEPS, 0);
+        return Steps.cachedToday(this);
     }
 
     private void createChannel() {
@@ -191,7 +206,9 @@ public class StepService extends Service implements SensorEventListener {
             }
         } catch (Exception e) {
             Log.e(TAG, "не удалось выйти в foreground: " + e);
-            startForeground(NOTIFICATION_ID, n);
+            // На Android 14+ startForeground без типа для health-службы тоже
+            // падает. Лучше остановиться, чем уронить процесс.
+            stopSelf();
         }
     }
 

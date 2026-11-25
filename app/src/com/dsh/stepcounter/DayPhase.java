@@ -119,10 +119,11 @@ final class DayPhase {
 
     /** Ключи по высоте солнца (градусы) и цвета неба сверху и у горизонта. */
     private static final float[] A_H = {65f, 25f, 8f, 0f, -6f, -14f, -60f};
+    // День должен выглядеть днём: раньше даже при высоком солнце небо было почти ночным.
     private static final int[] A_TOP = {
-            0xFF0E2A3C, 0xFF102C3F, 0xFF172538, 0xFF1B1A36, 0xFF12102A, 0xFF070A12, 0xFF05070C};
+            0xFF2E7CC0, 0xFF3F8BCB, 0xFF6BA3D0, 0xFF5A5F86, 0xFF2C2D57, 0xFF0C1122, 0xFF05070C};
     private static final int[] A_BOT = {
-            0xFF1B4655, 0xFF244A55, 0xFF4C3B36, 0xFF4A2A3A, 0xFF2A1830, 0xFF0C1020, 0xFF0A0F18};
+            0xFFBFE3F6, 0xFFD2EBF8, 0xFFEEDCBE, 0xFFE7A97C, 0xFF7E5673, 0xFF161E33, 0xFF0A0F18};
 
     static int skyTop(float alt) { return keyColor(A_TOP, alt); }
     static int skyBottom(float alt) { return keyColor(A_BOT, alt); }
@@ -149,6 +150,19 @@ final class DayPhase {
     }
 
     /** 0 — день, 1 — ночь: по высоте солнца, а не по часам. */
+    /** Насколько сейчас ночь (0 — день, 1 — ночь): нужно подписям на сцене. */
+    static float nightNow(Context ctx) {
+        try {
+            long stamp = stamp(ctx);
+            float[] sun = Weather.hasData(ctx)
+                    ? SunMoon.sun(stamp, lat(ctx), lon(ctx))
+                    : new float[]{56f, 180f};
+            return night(sun[0]);
+        } catch (Throwable t) {
+            return 0f;
+        }
+    }
+
     static float night(float alt) {
         if (alt > 6f) return 0f;
         if (alt < -12f) return 1f;
@@ -193,9 +207,11 @@ final class DayPhase {
         int top = skyTop(alt);
         int bottom = skyBottom(alt);
         if (cloud > 10) {
-            float k = Math.min(0.62f, cloud / 100f * 0.62f);
-            top = blend(top, 0xFF232A33, k);
-            bottom = blend(bottom, 0xFF39424E, k * 0.85f);
+            float k = Math.min(0.50f, cloud / 100f * 0.50f);
+            int cloudTop = night > 0.5f ? 0xFF232A33 : 0xFF95A6B4;
+            int cloudBottom = night > 0.5f ? 0xFF39424E : 0xFFC3D0DA;
+            top = blend(top, cloudTop, k);
+            bottom = blend(bottom, cloudBottom, k * 0.85f);
         }
 
         CLIP.reset();
@@ -293,8 +309,9 @@ final class DayPhase {
         drawGround(c, card, ground, d, night, sun[0], timeSec, cloud, bottom);
 
         // виньетка
+        int vigA = Math.min(0x58, 0x14 + (int) (night * 0x40));
         P.setShader(new RadialGradient(card.centerX(), card.centerY(),
-                Math.max(w, h) * 0.72f, 0x00000000, 0x4A000000, Shader.TileMode.CLAMP));
+                Math.max(w, h) * 0.72f, 0x00000000, vigA << 24, Shader.TileMode.CLAMP));
         c.drawRect(card, P);
         P.setShader(null);
 

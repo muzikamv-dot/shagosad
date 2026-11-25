@@ -109,16 +109,26 @@ public class CollectionView extends View {
         return "цветов";
     }
 
+    /** Растянуть вьюху на всю высоту содержимого: тогда листается вся страница. */
+    private boolean expand = false;
+
+    void setExpand(boolean on) {
+        expand = on;
+        requestLayout();
+    }
+
     private float pad() { return 12 * d; }
 
     private float gap() { return 8 * d; }
 
     private float headerH() { return 34 * d; }
 
-    private float cell() {
-        float w = getWidth() - pad() * 2 - gap() * (COLS - 1);
+    private float cellFor(float width) {
+        float w = width - pad() * 2 - gap() * (COLS - 1);
         return Math.max(1f, w / COLS);
     }
+
+    private float cell() { return cellFor(getWidth()); }
 
     private int rowsOf(Shelf s) { return (s.species.size() + COLS - 1) / COLS; }
 
@@ -128,10 +138,28 @@ public class CollectionView extends View {
         return headerH() + rows * cell() + (rows - 1) * gap() + gap();
     }
 
-    private float contentHeight() {
+    private float contentHeight() { return contentHeightFor(getWidth()); }
+
+    private float contentHeightFor(float width) {
+        float c = cellFor(width);
         float h = pad();
-        for (Shelf s : shelves) h += shelfHeight(s);
+        for (Shelf s : shelves) {
+            int rows = rowsOf(s);
+            if (rows == 0) continue;
+            h += headerH() + rows * c + (rows - 1) * gap() + gap();
+        }
         return h + pad();
+    }
+
+    @Override
+    protected void onMeasure(int wSpec, int hSpec) {
+        if (!expand) {
+            super.onMeasure(wSpec, hSpec);
+            return;
+        }
+        int w = MeasureSpec.getSize(wSpec);
+        int h = (int) Math.ceil(contentHeightFor(w));
+        setMeasuredDimension(w, h);
     }
 
     @Override
@@ -218,6 +246,10 @@ public class CollectionView extends View {
                 return true;
             case MotionEvent.ACTION_MOVE:
                 if (!dragging) return true;
+                if (expand) {
+                    if (Math.abs(e.getY() - downY) > 6 * d) moved = true;
+                    return true;
+                }
                 float dy = e.getY() - lastY;
                 if (Math.abs(e.getY() - downY) > 6 * d) moved = true;
                 offset -= dy;
@@ -229,6 +261,7 @@ public class CollectionView extends View {
             case MotionEvent.ACTION_UP:
                 dragging = false;
                 if (!moved) { tap(downX, downY); return true; }
+                if (expand) return true;
                 if (Math.abs(velocity) > 3 * d) {
                     maxOffset = Math.max(0, contentHeight() - getHeight());
                     post(fling);

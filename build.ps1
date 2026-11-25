@@ -7,7 +7,8 @@ param(
     [switch]$Install,
     [switch]$FreshRes,
     [switch]$Store,
-    [switch]$NoPhone          # собрать и выгрузить в папку, но НЕ ставить на телефон
+    [switch]$NoPhone,         # собрать и выгрузить в папку, но НЕ ставить на телефон
+    [switch]$OnCombat         # разрешить установку на боевой HONOR (только по согласию владельца)
 )
 
 # Continue, а не Stop: PowerShell 5.1 считает любой stderr нативной программы
@@ -72,7 +73,17 @@ Copy-Item $cached "$out\res.zip" -Force
 # ---------- 2/5 aapt2 link ----------
 $phase.Restart()
 Step 2 'aapt2 link'
-& "$bt\aapt2.exe" link -o "$out\base.apk" -I $jar --manifest "$app\AndroidManifest.xml" `
+# Магазинной сборке не нужно право ставить другие приложения: оно осталось от обновлялки
+# GitHub-сборки. Для Play Protect это «красный» признак — ругается «вредоносное приложение».
+$manifestPath = "$app\AndroidManifest.xml"
+if ($Store) {
+    $mfText = [IO.File]::ReadAllText($manifestPath)
+    $mfText = $mfText -replace '(?m)^[ \t]*<uses-permission android:name="android\.permission\.REQUEST_INSTALL_PACKAGES"\s*/>\r?\n', ''
+    $manifestPath = "$out\AndroidManifest-store.xml"
+    [IO.File]::WriteAllText($manifestPath, $mfText, (New-Object Text.UTF8Encoding($false)))
+    Write-Host '      магазинная сборка: право REQUEST_INSTALL_PACKAGES убрано' -ForegroundColor DarkGray
+}
+& "$bt\aapt2.exe" link -o "$out\base.apk" -I $jar --manifest $manifestPath `
     --java "$out\gen" --min-sdk-version $MIN_SDK --target-sdk-version $TARGET_SDK `
     --auto-add-overlay "$out\res.zip"
 Check 'aapt2 link'
@@ -86,6 +97,9 @@ $flavor = Join-Path $app 'src\com\dsh\stepcounter\AppFlavor.java'
 $flavorBody = "package com.dsh.stepcounter;`n`n/** Флейвор сборки: true — версия для магазина (обновления из RuStore). */`npublic final class AppFlavor {`n    public static final boolean STORE = $($Store.IsPresent.ToString().ToLower());`n}`n"
 [IO.File]::WriteAllText($flavor, $flavorBody, (New-Object Text.UTF8Encoding($false)))
 Write-Host ("      флейвор: {0}" -f $(if ($Store) { 'магазин (без обновлялки)' } else { 'GitHub (с обновлялкой)' })) -ForegroundColor DarkGray
+# Обновлялка: в магазинной сборке её код не нужен вовсе — Play Protect считает
+# «качает и ставит APK» признаком вредоносного загрузчика и блокирует установку.
+# Обновление с GitHub убрано: приложение обновляется только из RuStore.
 $sources = @(Get-ChildItem "$app\src" -Recurse -Filter *.java | ForEach-Object { $_.FullName })
 $sources += @(Get-ChildItem "$out\gen" -Recurse -Filter R.java | ForEach-Object { $_.FullName })
 # ASCII без BOM: javac не переносит BOM в @argfile и падает на «Invalid filename»
@@ -154,8 +168,31 @@ Write-Host ("        SHA256 {0}" -f (Get-FileHash $apk.FullName -Algorithm SHA25
 if ($Install) {
     Write-Host ''
     Write-Host 'Установка обновлением на телефон...' -ForegroundColor Cyan
-    if (-not $NoPhone) {
-        & $adb install -r $apk.FullName
+    # Боевой телефон владельца (HONOR PTP-N49) — только магазинная версия из RuStore.
+    # Туда не ставим никогда: даже по ошибке, если он окажется единственным подключённым.
+    $devSerials = @('eb17caa0')                      # рабочий Realme RMX5079
+    $combatSerials = @('AXUG024C13000138')           # боевой HONOR PTP-N49
+    $attached = @(& $adb devices | Select-Object -Skip 1 | Where-Object { $_ -match '\sdevice$' } |
+                  ForEach-Object { ($_ -split '\s+')[0] })
+    $target = @($attached | Where-Object { $devSerials -contains $_ }) | Select-Object -First 1
+    if (-not $target) {
+        $target = @($attached | Where-Object { $combatSerials -notcontains $_ }) | Select-Object -First 1
+    }
+    if (-not $target) {
+        $combat = @($attached | Where-Object { $combatSerials -contains $_ }) | Select-Object -First 1
+        if ($combat -and $OnCombat) {
+            $target = $combat
+            Write-Host ("        ставлю на боевой HONOR по флагу -OnCombat ({0})" -f $target) -ForegroundColor Yellow
+        } else {
+            Write-Host '        рабочий телефон не подключён — установку пропускаю' -ForegroundColor Yellow
+            Write-Host '        (на боевой HONOR ставлю только с флагом -OnCombat)' -ForegroundColor DarkGray
+        }
+    }
+    if (-not $target) {
+        # ставить некуда — молча выходим из блока установки
+    } elseif (-not $NoPhone) {
+        Write-Host ("        ставлю на {0}" -f $target) -ForegroundColor DarkGray
+        & $adb -s $target install -r $apk.FullName
         Check 'adb install'
     } else {
         Write-Host '        на телефон не ставлю (-NoPhone: обновления только из RuStore)' -ForegroundColor DarkGray
@@ -208,7 +245,7 @@ if ($Install) {
     # 5) исходники
     $zipTmp = Join-Path $env:TEMP 'shagosad-src.zip'
     if (Test-Path $zipTmp) { Remove-Item $zipTmp -Force }
-    Compress-Archive -Path "$app\src", "$app\res", "$app\AndroidManifest.xml", $proj, (Join-Path $root 'build.ps1') `
+    Compress-Archive -Path "$app\src", "$app\src-github", "$app\src-store", "$app\res", "$app\AndroidManifest.xml", $proj, (Join-Path $root 'build.ps1') `
                      -DestinationPath $zipTmp -Force
     & $adb push $zipTmp "$dist/исходники-шагомер.zip"
     Check 'adb push исходники'

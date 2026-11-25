@@ -26,9 +26,15 @@ public class BootReceiver extends BroadcastReceiver {
         SyncJobService.schedule(app);
         AlarmScheduler.scheduleSync(app);
 
-        boolean serviceOn = Steps.prefs(app).getBoolean(Steps.KEY_SERVICE, false);
+        // без согласия на обработку данных служба не поднимается
+        if (!ConsentActivity.agreed(app)) return;
+        boolean serviceOn = Steps.serviceEnabled(app);
         if (!serviceOn) {
             Log.i(TAG, "служба выключена — работаем в экономном режиме");
+            return;
+        }
+        if (!SensorSync.hasActivityPermission(app)) {
+            Log.i(TAG, "нет разрешения на активность — службу запустит приложение");
             return;
         }
 

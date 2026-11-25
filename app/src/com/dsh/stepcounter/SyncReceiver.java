@@ -22,21 +22,32 @@ public class SyncReceiver extends BroadcastReceiver {
         // следующая побудка — сразу, не дожидаясь успеха замера
         AlarmScheduler.scheduleSync(app);
 
-
-        runOnce(app);
+        // goAsync держит процесс, пока датчик отдаёт показание. Без него
+        // Android убивал поток замера сразу после return — шаги не писались.
+        final BroadcastReceiver.PendingResult pending = goAsync();
+        runOnce(app, 1500L, pending);
     }
 
     /** Один замер в фоне: забрать показания, проверить пропуски, обновить виджет. */
     static void runOnce(final Context context) {
-        runOnce(context, 1500L);
+        runOnce(context, 1500L, null);
     }
 
     /** Замер с настраиваемым ожиданием пачки от датчика (тап по виджету ждёт дольше). */
     static void runOnce(final Context context, final long waitMs) {
+        runOnce(context, waitMs, null);
+    }
+
+    static void runOnce(final Context context, final long waitMs,
+                        final BroadcastReceiver.PendingResult pending) {
         final Context app = context.getApplicationContext();
         new Thread(new Runnable() {
             @Override public void run() {
-                syncNow(app, waitMs);
+                try {
+                    syncNow(app, waitMs);
+                } finally {
+                    if (pending != null) pending.finish();
+                }
             }
         }, "sync-once").start();
     }
@@ -47,6 +58,7 @@ public class SyncReceiver extends BroadcastReceiver {
         try {
             SensorSync.sync(app, waitMs);
             GameState g = GameState.load(app);
+            g.repairMidnightSteps(app);
             g.checkMissedDays(app);
             g.save(app);
             Steps.prefs(app).edit()

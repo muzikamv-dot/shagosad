@@ -51,6 +51,9 @@ public final class Backup {
     public static String build(Context c) throws Exception {
         JSONObject o = new JSONObject();
         o.put("app", "stepcounter");
+        // версия, которой сделана копия: по ней видно, можно ли её грузить в эту сборку
+        o.put("versionCode", appVersionCode(c));
+        o.put("versionName", appVersionName(c));
         o.put("version", 4);
         o.put("exported", System.currentTimeMillis());
         o.put("garden", read(new File(c.getFilesDir(), "garden.json")));
@@ -83,6 +86,8 @@ public final class Backup {
         // обучение, служебные метки журнала. Раньше копия их не сохраняла.
         o.put("prefsSteps", dumpPrefs(c, Steps.PREFS));
         o.put("prefsUi", dumpPrefs(c, "ui"));
+        // id/secret сада: без них восстановление копии создаёт новый сад
+        o.put("prefsSocial", dumpPrefs(c, Social.prefsName()));
         return o.toString();
     }
 
@@ -113,6 +118,43 @@ public final class Backup {
     }
 
     /** Вернуть набор настроек ровно к состоянию копии: сначала очищаем, потом пишем. */
+    /** Номер сборки: нужен, чтобы понять, из какой версии сделана копия. */
+    static int appVersionCode(Context c) {
+        try {
+            return c.getPackageManager().getPackageInfo(c.getPackageName(), 0).versionCode;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    static String appVersionName(Context c) {
+        try {
+            return c.getPackageManager().getPackageInfo(c.getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /**
+     * Если копия сделана в более новой сборке, возвращаем текст предупреждения.
+     * Старая сборка не знает новых видов цветов и полей — спрашиваем человека.
+     */
+    static String newerBackupWarning(Context c, String json) {
+        try {
+            JSONObject o = new JSONObject(json);
+            int code = o.optInt("versionCode", 0);
+            int mine = appVersionCode(c);
+            if (code <= 0 || mine <= 0 || code <= mine) return null;
+            String name = o.optString("versionName", "");
+            return "Копия сделана в версии " + (name.isEmpty() ? String.valueOf(code) : name)
+                    + ", а у вас " + appVersionName(c) + ".\n\n"
+                    + "В новой версии есть цветы и настройки, которых эта сборка не знает: "
+                    + "после восстановления сад может не открыться. Лучше сначала обновить приложение.";
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private static void restorePrefs(Context c, String name, JSONObject o) {
         if (o == null) return;
         try {
@@ -179,6 +221,7 @@ public final class Backup {
             try {
                 restorePrefs(c, Steps.PREFS, o.optJSONObject("prefsSteps"));
                 restorePrefs(c, "ui", o.optJSONObject("prefsUi"));
+                restorePrefs(c, Social.prefsName(), o.optJSONObject("prefsSocial"));
             } catch (Exception ignored) { }
 
             int restored = journal.length() > 0 ? 2 : 1;
